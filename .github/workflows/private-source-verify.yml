@@ -82,18 +82,48 @@ jobs:
           fi
           missing_contract=false
           missing_finalize=false
-          missing_request_field=false
           grep -q 'undefined: ExecutionContract' "$log" && missing_contract=true
           grep -q 'undefined: FinalizeExecutionContract' "$log" && missing_finalize=true
-          grep -q 'unknown field Contract in struct literal of type ExportRequest' "$log" && missing_request_field=true
           echo "RED_MISSING_EXECUTION_CONTRACT=$missing_contract"
           echo "RED_MISSING_FINALIZE_EXECUTION_CONTRACT=$missing_finalize"
-          echo "RED_MISSING_EXPORT_REQUEST_CONTRACT=$missing_request_field"
-          if [[ "$missing_contract" != true || "$missing_finalize" != true || "$missing_request_field" != true ]]; then
-            echo "::error title=UNEXPECTED_RED::Execution contract tests failed for an unexpected cause."
+          if [[ "$missing_contract" != true || "$missing_finalize" != true ]]; then
+            echo "::error title=UNEXPECTED_RED::Canonical Step 4 tests failed for a cause other than the expected missing execution-contract implementation."
             exit 1
           fi
+          echo "CANONICAL_STEP4_RED=PASS"
+
+      - name: Isolate missing ExportRequest Contract field
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          test_file="tools/contractctl/internal/workspace/execution_contract_test.go"
+          saved="$RUNNER_TEMP/execution_contract_test.go"
+          probe="tools/contractctl/internal/workspace/contract_field_probe_test.go"
+          probe_log="$RUNNER_TEMP/contract-field-probe.log"
+          mv "$test_file" "$saved"
+          cat >"$probe" <<'EOF'
+          package workspace
+          var _ = ExportRequest{Contract: struct{}{}}
+          EOF
+          set +e
+          go test ./tools/contractctl/internal/workspace -run '^$' -count=1 >"$probe_log" 2>&1
+          rc=$?
+          set -e
+          field_missing=false
+          grep -q 'unknown field Contract in struct literal of type ExportRequest' "$probe_log" && field_missing=true
+          rm -f "$probe"
+          mv "$saved" "$test_file"
+          echo "RED_MISSING_EXPORT_REQUEST_CONTRACT=$field_missing"
+          if [[ $rc -eq 0 || "$field_missing" != true ]]; then
+            echo "::error title=UNEXPECTED_PROBE_RESULT::ExportRequest Contract-field probe did not fail for the expected missing field."
+            exit 1
+          fi
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
           echo "EXPECTED_TDD_RED=PASS"
+          echo "CLEAN_TREE_AFTER_RED_PROBE=PASS"
           exit 1
 
       - name: Destroy ephemeral private workspace
@@ -102,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$RUNNER_TEMP/private-source"
-          rm -f "$RUNNER_TEMP/machina-git-askpass.sh" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/fos-003-execution-contract-red.log"
+          rm -f "$RUNNER_TEMP/machina-git-askpass.sh" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/fos-003-execution-contract-red.log" "$RUNNER_TEMP/contract-field-probe.log" "$RUNNER_TEMP/execution_contract_test.go"
           test ! -e "$RUNNER_TEMP/private-source"
           test ! -e "$RUNNER_TEMP/machina-git-askpass.sh"
           echo "EPHEMERAL_WORKSPACE_DESTROYED=PASS"
