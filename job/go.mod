@@ -6,6 +6,7 @@ require (
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
@@ -16,5 +17,4 @@ require (
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	google.golang.org/protobuf v1.34.2 // indirect
 )
