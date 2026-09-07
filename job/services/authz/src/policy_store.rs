@@ -22,8 +22,7 @@ impl PolicySnapshot {
         policies: PolicySet,
         entities: Entities,
     ) -> Result<Self, PolicyLoadError> {
-        let validation =
-            Validator::new(schema.clone()).validate(&policies, ValidationMode::Strict);
+        let validation = Validator::new(schema.clone()).validate(&policies, ValidationMode::Strict);
         if !validation.validation_passed() {
             return Err(PolicyLoadError::ValidationFailed);
         }
