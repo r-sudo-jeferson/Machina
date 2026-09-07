@@ -35,7 +35,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Capture Cargo.lock with Rust 1.98.1
+      - name: Generate Cargo.lock with Rust 1.98.1
         working-directory: job
         run: |
           set -euo pipefail
@@ -43,9 +43,14 @@ jobs:
           rustup toolchain install 1.98.1 --component clippy --component rustfmt
           test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
           cargo +1.98.1 generate-lockfile
-          echo 'MACHINA_CARGO_LOCK_BEGIN'
-          base64 Cargo.lock
-          echo 'MACHINA_CARGO_LOCK_END'
           cargo +1.98.1 fmt --all --check
           cargo +1.98.1 clippy --workspace --all-targets -- -D warnings
           cargo +1.98.1 test --workspace --all-targets
+
+      - name: Upload generated Cargo.lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: machina-cargo-lock
+          path: job/Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
