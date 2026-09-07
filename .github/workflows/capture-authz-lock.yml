@@ -1,0 +1,42 @@
+name: Capture Rust authorization lock
+
+on:
+  push:
+    branches:
+      - forge/mch-s001-1.0.0
+    paths:
+      - 'job/services/authz/Cargo.toml'
+      - 'job/services/authz/build.rs'
+      - 'job/Cargo.lock'
+      - '.github/workflows/capture-authz-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  capture-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Generate lock with Rust 1.98.1
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 generate-lockfile
+          cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
+
+      - name: Upload generated Cargo.lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: machina-authz-cargo-lock
+          path: job/Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
