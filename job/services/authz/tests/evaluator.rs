@@ -6,9 +6,9 @@ use evaluator::{DecisionReason, Evaluator, VersionedPolicySet};
 
 fn request() -> Request {
     Request::new(
-        Some("User::\"subject-a\"".parse::<EntityUid>().expect("principal")),
-        Some("Action::\"context.read\"".parse::<EntityUid>().expect("action")),
-        Some("PlatformContext::\"active\"".parse::<EntityUid>().expect("resource")),
+        "User::\"subject-a\"".parse::<EntityUid>().expect("principal"),
+        "Action::\"context.read\"".parse::<EntityUid>().expect("action"),
+        "PlatformContext::\"active\"".parse::<EntityUid>().expect("resource"),
         Context::empty(),
         None,
     )
