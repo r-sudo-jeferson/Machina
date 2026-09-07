@@ -54,11 +54,8 @@ impl Evaluator {
             };
         }
 
-        let response = Authorizer::new().is_authorized(
-            request,
-            &snapshot.policies,
-            &snapshot.entities,
-        );
+        let response =
+            Authorizer::new().is_authorized(request, &snapshot.policies, &snapshot.entities);
 
         // Cedar may continue evaluating other policies after an evaluation
         // error. Machina therefore never turns a response containing an error
