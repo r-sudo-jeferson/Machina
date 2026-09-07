@@ -37,6 +37,8 @@ for migration in "${MIGRATIONS[@]}"; do
   [[ -f "$migration" ]] || fail "required migration is missing: $migration"
 done
 
+source scripts/dbtest/check_migration_recovery.sh
+
 docker run --detach --rm \
   --name "$CONTAINER" \
   --network none \
