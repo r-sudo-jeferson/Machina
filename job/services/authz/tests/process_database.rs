@@ -146,7 +146,14 @@ async fn executable_loads_active_tenant_policy_from_postgres_before_becoming_rea
         .expect("PostgreSQL-backed authorization response")
         .into_inner();
 
-    assert!(response.allowed);
+    assert!(
+        response.allowed,
+        "authorization denied: version={} hash={} reasons={:?} diagnostic_ref={}",
+        response.policy_version,
+        response.policy_snapshot_hash,
+        response.reason_codes,
+        response.diagnostic_ref
+    );
     assert_eq!(response.policy_version, 1);
     assert_eq!(response.policy_snapshot_hash, SNAPSHOT_HASH);
     assert!(response.reason_codes.is_empty());
