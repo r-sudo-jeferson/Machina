@@ -65,4 +65,8 @@ impl PolicyCache {
             .get(tenant_id)
             .filter(|snapshot| snapshot.version() == required_policy_version)
     }
+
+    pub fn invalidate(&mut self, tenant_id: &str) -> bool {
+        self.snapshots.remove(tenant_id).is_some()
+    }
 }
