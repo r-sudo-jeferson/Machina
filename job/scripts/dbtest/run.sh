@@ -51,8 +51,9 @@ for _ in $(seq 1 60); do
 done
 docker exec "$CONTAINER" pg_isready -q -U postgres -d postgres || fail 'PostgreSQL did not become ready'
 
+actual_version_num="$(docker exec "$CONTAINER" psql -XAtq -U postgres -d postgres -c 'SHOW server_version_num')"
 actual_version="$(docker exec "$CONTAINER" psql -XAtq -U postgres -d postgres -c 'SHOW server_version')"
-[[ "$actual_version" == '18.6' ]] || fail "unexpected PostgreSQL version: $actual_version"
+[[ "$actual_version_num" == '180006' ]] || fail "unexpected PostgreSQL server_version_num: $actual_version_num ($actual_version)"
 
 docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
 CREATE ROLE ${MIGRATOR_ROLE} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
@@ -128,14 +129,14 @@ SELECT set_config('app.tenant_id','${TENANT_A}',true);
 SELECT count(*) FROM iam.workspaces;
 COMMIT;
 BEGIN;
-SELECT coalesce(current_setting('app.tenant_id', true), '<null>');
+SELECT CASE WHEN NULLIF(current_setting('app.tenant_id', true), '') IS NULL THEN '<cleared>' ELSE current_setting('app.tenant_id', true) END;
 SELECT count(*) FROM iam.workspaces;
 COMMIT;
 SQL
 )"
 mapfile -t pool_lines <<< "$pool_reset"
 [[ "${pool_lines[*]}" == *"${TENANT_A}"* ]] || fail 'transaction-local tenant context was never established'
-[[ "${pool_lines[*]}" == *'<null>'* || "${pool_lines[*]}" == *" 0 "* || "${pool_lines[*]}" == *'0' ]] || fail 'transaction-local tenant context did not clear after commit'
+expect_equals '<cleared>' "${pool_lines[-2]}" 'transaction-local tenant context did not clear after commit'
 expect_equals '0' "${pool_lines[-1]}" 'same backend connection leaked previous tenant rows after commit'
 
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
