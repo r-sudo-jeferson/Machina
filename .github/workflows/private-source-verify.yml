@@ -22,7 +22,7 @@ jobs:
       image: golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa
     env:
       MACHINA_GITLAB_REPOSITORY: https://gitlab.com/machina-group/machina.git
-      MACHINA_GITLAB_SOURCE_SHA: aae5391babae3d726832b2fa712f9b727210a05c51dc0a3b4300de0392cced36
+      MACHINA_GITLAB_SOURCE_SHA: c40f3a4ca26ed26bc679751435eeae5810fd8c42ffcb4d6240c36a27c3784714
 
     steps:
       - name: Trust and credential preflight
