@@ -17,6 +17,28 @@ func TestMCHS001ContractSetValidates(t *testing.T) {
 	}
 }
 
+func TestValidateAllRejectsSemanticallyValidButTamperedContract(t *testing.T) {
+	t.Parallel()
+
+	root := copyContractTree(t)
+	path := filepath.Join(root, "contracts", "ai", "context-tool.schema.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = ValidateAll(root)
+	if err == nil {
+		t.Fatal("ValidateAll() accepted a contract whose bytes no longer match the approved digest")
+	}
+	if !strings.Contains(err.Error(), "digest") {
+		t.Fatalf("ValidateAll() rejected tampered contract for the wrong reason: %v", err)
+	}
+}
+
 func TestContractDigestManifestValidates(t *testing.T) {
 	t.Parallel()
 
