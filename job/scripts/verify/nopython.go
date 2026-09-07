@@ -102,19 +102,26 @@ func isWorkflow(rel string) bool {
 }
 
 func isOperationalScript(rel, name string) bool {
-	lowerRel := strings.ToLower(rel)
+	lowerRel := strings.ToLower(filepath.ToSlash(rel))
 	lowerName := strings.ToLower(name)
-	if strings.Contains(lowerRel, "/scripts/") || strings.HasPrefix(lowerRel, "job/scripts/") {
-		return true
-	}
+
 	if lowerName == "makefile" || lowerName == "taskfile.yml" || lowerName == "taskfile.yaml" || lowerName == "package.json" {
 		return true
 	}
+
 	for _, ext := range []string{".sh", ".bash", ".zsh", ".fish"} {
 		if strings.HasSuffix(lowerName, ext) {
 			return true
 		}
 	}
+
+	// Extensionless files under the dedicated scripts namespace are treated as
+	// executable command artifacts. Source files such as .go/.rs/.ts remain
+	// source code and are not parsed as shell merely because they live there.
+	if strings.HasPrefix(lowerRel, "job/scripts/") && filepath.Ext(lowerName) == "" {
+		return true
+	}
+
 	return false
 }
 
