@@ -6,6 +6,7 @@ pub enum DecisionReason {
     DefaultDeny,
     EvaluationError,
     ExplicitForbid,
+    PolicyUnavailable,
     StalePolicyVersion,
 }
 
