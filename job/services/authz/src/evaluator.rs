@@ -3,6 +3,7 @@ use cedar_policy::{Authorizer, Decision as CedarDecision, Entities, PolicySet, R
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecisionReason {
     DefaultDeny,
+    ExplicitForbid,
     StalePolicyVersion,
 }
 
@@ -78,10 +79,16 @@ impl Evaluator {
             };
         }
 
+        let reason = if response.diagnostics().reason().next().is_some() {
+            DecisionReason::ExplicitForbid
+        } else {
+            DecisionReason::DefaultDeny
+        };
+
         Decision {
             allowed: false,
             policy_version: snapshot.version,
-            reason_codes: vec![DecisionReason::DefaultDeny],
+            reason_codes: vec![reason],
             diagnostic_ref: None,
         }
     }
