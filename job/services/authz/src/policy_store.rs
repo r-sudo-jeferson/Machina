@@ -4,12 +4,14 @@ use cedar_policy::{Entities, PolicySet, Schema, ValidationMode, Validator};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PolicyLoadError {
+    InvalidSnapshotHash,
     ValidationFailed,
 }
 
 #[derive(Debug, Clone)]
 pub struct PolicySnapshot {
     version: u64,
+    snapshot_hash: String,
     schema: Schema,
     policies: PolicySet,
     entities: Entities,
@@ -18,10 +20,20 @@ pub struct PolicySnapshot {
 impl PolicySnapshot {
     pub fn try_new(
         version: u64,
+        snapshot_hash: impl Into<String>,
         schema: Schema,
         policies: PolicySet,
         entities: Entities,
     ) -> Result<Self, PolicyLoadError> {
+        let snapshot_hash = snapshot_hash.into();
+        if snapshot_hash.len() != 64
+            || !snapshot_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        {
+            return Err(PolicyLoadError::InvalidSnapshotHash);
+        }
+
         let validation = Validator::new(schema.clone()).validate(&policies, ValidationMode::Strict);
         if !validation.validation_passed() {
             return Err(PolicyLoadError::ValidationFailed);
@@ -29,6 +41,7 @@ impl PolicySnapshot {
 
         Ok(Self {
             version,
+            snapshot_hash,
             schema,
             policies,
             entities,
@@ -37,6 +50,10 @@ impl PolicySnapshot {
 
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    pub fn snapshot_hash(&self) -> &str {
+        &self.snapshot_hash
     }
 
     pub(crate) fn schema(&self) -> &Schema {
