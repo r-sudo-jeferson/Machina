@@ -1,0 +1,47 @@
+name: Verify Rust authorization
+
+on:
+  push:
+    branches:
+      - forge/mch-s001-1.0.0
+    paths:
+      - 'job/Cargo.toml'
+      - 'job/Cargo.lock'
+      - 'job/services/authz/**'
+      - '.github/workflows/verify-authz.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'job/Cargo.toml'
+      - 'job/Cargo.lock'
+      - 'job/services/authz/**'
+      - '.github/workflows/verify-authz.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-authz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify Rust 1.98.1 authorization service
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --component clippy --component rustfmt
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 fmt --all --check
+          cargo +1.98.1 clippy --workspace --all-targets -- -D warnings
+          cargo +1.98.1 test --workspace --all-targets
