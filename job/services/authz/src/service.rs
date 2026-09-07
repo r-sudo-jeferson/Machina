@@ -11,7 +11,11 @@ pub struct DecisionInput {
 }
 
 impl DecisionInput {
-    pub fn new(tenant_id: impl Into<String>, required_policy_version: u64, request: Request) -> Self {
+    pub fn new(
+        tenant_id: impl Into<String>,
+        required_policy_version: u64,
+        request: Request,
+    ) -> Self {
         Self {
             tenant_id: tenant_id.into(),
             required_policy_version,
@@ -31,7 +35,8 @@ impl AuthorizationEngine {
     }
 
     pub fn decide(&self, cache: &PolicyCache, input: &DecisionInput) -> Decision {
-        let Some(snapshot) = cache.get_exact(&input.tenant_id, input.required_policy_version) else {
+        let Some(snapshot) = cache.get_exact(&input.tenant_id, input.required_policy_version)
+        else {
             return Decision {
                 allowed: false,
                 policy_version: 0,
@@ -40,10 +45,7 @@ impl AuthorizationEngine {
             };
         };
 
-        self.evaluator.decide(
-            &input.request,
-            input.required_policy_version,
-            snapshot,
-        )
+        self.evaluator
+            .decide(&input.request, input.required_policy_version, snapshot)
     }
 }
