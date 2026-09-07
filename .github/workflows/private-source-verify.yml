@@ -133,11 +133,24 @@ jobs:
             echo "${gate}=PASS"
           }
 
+          assert_clean() {
+            local stage="$1"
+            if ! git diff --quiet --exit-code; then
+              echo "::error title=CLEAN_TREE_${stage}_FAIL::Tracked working tree changed after ${stage}; paths withheld by evidence policy."
+              return 1
+            fi
+            echo "CLEAN_TREE_${stage}=PASS"
+          }
+
+          assert_clean BASELINE
           run_private_gate MODULE_DOWNLOAD go mod download
+          assert_clean MODULE_DOWNLOAD
           run_private_gate GO_TEST go test ./... -count=1
+          assert_clean GO_TEST
           run_private_gate GO_RACE go test -race ./... -count=1
+          assert_clean GO_RACE
           run_private_gate GO_VET go vet ./...
-          run_private_gate CLEAN_TREE git diff --exit-code
+          assert_clean GO_VET
 
       - name: Destroy ephemeral private workspace
         if: always()
