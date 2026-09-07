@@ -22,7 +22,7 @@ jobs:
       image: golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa
     env:
       MACHINA_GITLAB_REPOSITORY: https://gitlab.com/machina-group/machina.git
-      MACHINA_GITLAB_SOURCE_SHA: 89ed4dd2b54a4ba750a23bb2f1536373a49413f06e137e6026ed3528a9e46554
+      MACHINA_GITLAB_SOURCE_SHA: 73caf0e376ca899ee1da013a1136531b209592fd1a16c074808cf950235c8a61
 
     steps:
       - name: Trust and exact private checkout
