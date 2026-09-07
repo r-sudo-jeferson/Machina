@@ -54,3 +54,17 @@ fn cache_returns_snapshot_only_for_exact_tenant_and_policy_version() {
     assert!(cache.get_exact("tenant-a", 8).is_none());
     assert!(cache.get_exact("tenant-b", 7).is_none());
 }
+
+#[test]
+fn invalidation_removes_only_the_target_tenant_snapshot() {
+    let mut cache = PolicyCache::new();
+    cache.insert("tenant-a", valid_snapshot(7));
+    cache.insert("tenant-b", valid_snapshot(7));
+
+    assert!(cache.invalidate("tenant-a"));
+    assert!(cache.get_exact("tenant-a", 7).is_none());
+    assert_eq!(
+        cache.get_exact("tenant-b", 7).map(PolicySnapshot::version),
+        Some(7)
+    );
+}
