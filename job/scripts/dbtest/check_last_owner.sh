@@ -32,7 +32,7 @@ run_owner_demotion_race() {
   done
   [[ -f "$peer_ready_file" ]] || return 98
 
-  query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${owner_race_tenant}',true); SELECT pg_sleep(0.75); UPDATE iam.memberships SET starter_role='member', updated_at=now() WHERE tenant_id='${owner_race_tenant}' AND subject_id='${subject_id}'; SELECT pg_sleep(1.5); COMMIT;" >/dev/null
+  query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${owner_race_tenant}',true); SELECT pg_sleep(0.75); SELECT iam.set_membership_access('${subject_id}','member','active'); SELECT pg_sleep(1.5); COMMIT;" >/dev/null
 }
 
 run_owner_demotion_race "$owner_race_subject_a" "$owner_race_barrier/a.ready" "$owner_race_barrier/b.ready" >"$owner_race_barrier/a.log" 2>&1 &
