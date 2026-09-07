@@ -1,8 +1,5 @@
-#[path = "../src/evaluator.rs"]
-mod evaluator;
-
 use cedar_policy::{Context, Entities, EntityUid, PolicySet, Request};
-use evaluator::{DecisionReason, Evaluator, VersionedPolicySet};
+use machina_authz::evaluator::{DecisionReason, Evaluator, VersionedPolicySet};
 
 fn request() -> Request {
     Request::new(
