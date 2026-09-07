@@ -79,13 +79,16 @@ impl PolicyCache {
         self.snapshots.insert(tenant_id.to_owned(), snapshot);
     }
 
+    pub fn get(&self, tenant_id: &str) -> Option<&PolicySnapshot> {
+        self.snapshots.get(tenant_id)
+    }
+
     pub fn get_exact(
         &self,
         tenant_id: &str,
         required_policy_version: u64,
     ) -> Option<&PolicySnapshot> {
-        self.snapshots
-            .get(tenant_id)
+        self.get(tenant_id)
             .filter(|snapshot| snapshot.version() == required_policy_version)
     }
 
