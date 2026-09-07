@@ -97,6 +97,27 @@ fn exact_tenant_and_policy_snapshot_delegates_to_cedar() {
 }
 
 #[test]
+fn existing_but_stale_tenant_snapshot_reports_stale_version() {
+    let engine = AuthorizationEngine::new();
+    let mut cache = PolicyCache::new();
+    cache.insert("tenant-a", permit_snapshot(7));
+    let input = DecisionInput::new("tenant-a", 8, cedar_request());
+
+    let decision = engine.decide(&cache, &input);
+
+    assert!(!decision.allowed);
+    assert_eq!(decision.policy_version, 7);
+    assert_eq!(
+        decision.policy_snapshot_hash.as_deref(),
+        Some(TEST_SNAPSHOT_HASH)
+    );
+    assert_eq!(
+        decision.reason_codes,
+        vec![DecisionReason::StalePolicyVersion]
+    );
+}
+
+#[test]
 fn another_tenants_snapshot_is_never_used_as_fallback() {
     let engine = AuthorizationEngine::new();
     let mut cache = PolicyCache::new();
