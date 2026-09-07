@@ -57,8 +57,13 @@ fn try_http_status(addr: SocketAddr, path: &str) -> Option<u16> {
 }
 
 async fn await_http_status(addr: SocketAddr, path: &str, expected: u16) {
+    let path = path.to_owned();
     for _ in 0..100 {
-        if try_http_status(addr, path) == Some(expected) {
+        let attempt_path = path.clone();
+        let status = tokio::task::spawn_blocking(move || try_http_status(addr, &attempt_path))
+            .await
+            .expect("probe client task");
+        if status == Some(expected) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
