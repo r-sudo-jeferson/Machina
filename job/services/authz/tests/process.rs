@@ -99,7 +99,10 @@ fn await_clean_exit(mut child: Child) {
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
         if let Some(status) = child.try_wait().expect("poll authz process") {
-            assert!(status.success(), "SIGTERM must produce a clean process exit");
+            assert!(
+                status.success(),
+                "SIGTERM must produce a clean process exit"
+            );
             return;
         }
         thread::sleep(Duration::from_millis(20));
