@@ -94,6 +94,22 @@ fn stale_policy_version_denies_before_evaluation() {
 }
 
 #[test]
+fn newer_policy_snapshot_than_required_denies_before_evaluation() {
+    let evaluator = Evaluator::new();
+    let snapshot = VersionedPolicySet::new(8, matching_permit_policy(), Entities::empty());
+
+    let decision = evaluator.decide(&request(), 7, &snapshot);
+
+    assert!(!decision.allowed);
+    assert_eq!(decision.policy_version, 8);
+    assert_eq!(
+        decision.reason_codes,
+        vec![DecisionReason::StalePolicyVersion]
+    );
+    assert!(decision.diagnostic_ref.is_none());
+}
+
+#[test]
 fn matching_permit_policy_allows() {
     let evaluator = Evaluator::new();
     let snapshot = VersionedPolicySet::new(7, matching_permit_policy(), Entities::empty());
