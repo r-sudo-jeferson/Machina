@@ -50,6 +50,20 @@ fn matching_permit_and_forbid_policy() -> PolicySet {
     .expect("policies")
 }
 
+fn evaluation_error_policy() -> PolicySet {
+    r#"
+        permit(
+            principal,
+            action == Action::"context.read",
+            resource == PlatformContext::"active"
+        ) when {
+            principal.department == "finance"
+        };
+    "#
+    .parse()
+    .expect("policy")
+}
+
 #[test]
 fn empty_policy_store_denies_fail_closed() {
     let evaluator = Evaluator::new();
@@ -103,4 +117,17 @@ fn matching_forbid_overrides_matching_permit() {
     assert_eq!(decision.policy_version, 7);
     assert_eq!(decision.reason_codes, vec![DecisionReason::ExplicitForbid]);
     assert!(decision.diagnostic_ref.is_none());
+}
+
+#[test]
+fn cedar_evaluation_diagnostics_deny_without_leaking_raw_error() {
+    let evaluator = Evaluator::new();
+    let snapshot = VersionedPolicySet::new(7, evaluation_error_policy(), Entities::empty());
+
+    let decision = evaluator.decide(&request(), 7, &snapshot);
+
+    assert!(!decision.allowed, "evaluation uncertainty must deny");
+    assert_eq!(decision.policy_version, 7);
+    assert_eq!(decision.reason_codes, vec![DecisionReason::EvaluationError]);
+    assert_eq!(decision.diagnostic_ref.as_deref(), Some("cedar-evaluation-error"));
 }
