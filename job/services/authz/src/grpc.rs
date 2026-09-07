@@ -1,9 +1,7 @@
 use std::str::FromStr;
 use std::sync::RwLock;
 
-use cedar_policy::{
-    Context, EntityId, EntityTypeName, EntityUid, Request, RestrictedExpression,
-};
+use cedar_policy::{Context, EntityId, EntityTypeName, EntityUid, Request, RestrictedExpression};
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
 
 use crate::evaluator::DecisionReason;
@@ -70,7 +68,8 @@ impl AuthorizationService for AuthorizationServiceHandler {
         &self,
         request: TonicRequest<DecisionRequest>,
     ) -> Result<TonicResponse<DecisionResponse>, Status> {
-        self.decide_message(request.into_inner()).map(TonicResponse::new)
+        self.decide_message(request.into_inner())
+            .map(TonicResponse::new)
     }
 }
 
@@ -93,12 +92,12 @@ fn cedar_request(message: &DecisionRequest) -> Result<Request, Status> {
     let principal = entity_uid(PRINCIPAL_TYPE, &message.subject_id)?;
     let action = entity_uid(ACTION_TYPE, &message.action)?;
     let resource = entity_uid(&message.resource_type, &message.resource_id)?;
-    let context = Context::from_pairs(message.context.iter().map(|(key, value)| {
-        (
-            key.clone(),
-            RestrictedExpression::new_string(value.clone()),
-        )
-    }))
+    let context = Context::from_pairs(
+        message
+            .context
+            .iter()
+            .map(|(key, value)| (key.clone(), RestrictedExpression::new_string(value.clone()))),
+    )
     .map_err(|_| Status::invalid_argument(INVALID_REQUEST_MESSAGE))?;
 
     Request::new(principal, action, resource, context, None)
