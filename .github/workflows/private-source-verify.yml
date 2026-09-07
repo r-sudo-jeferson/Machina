@@ -1,4 +1,4 @@
-name: Machina Private Source Verify
+name: Machina Workspace Manifest RED Diagnose
 
 on:
   push:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   verify:
-    name: private-source-verify
+    name: workspace-manifest-red-diagnose
     if: github.repository == 'r-sudo-jeferson/Machina' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -22,10 +22,10 @@ jobs:
       image: golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa
     env:
       MACHINA_GITLAB_REPOSITORY: https://gitlab.com/machina-group/machina.git
-      MACHINA_GITLAB_SOURCE_SHA: b28982fa544193cb79746faa29c5d3736891420d06ca34352dd831bd00a1b6cc
+      MACHINA_GITLAB_SOURCE_SHA: 900f74c2f59a6c76d23d6d2dae1762712c2dd3ac95ea350b8fac9a206931569d
 
     steps:
-      - name: Trust and credential preflight
+      - name: Trust and exact private checkout
         shell: bash
         env:
           MACHINA_GITLAB_READ_USERNAME: ${{ secrets.MACHINA_GITLAB_READ_USERNAME }}
@@ -33,24 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/forge/private-source-verify-e9e4cd"
-          if [[ -z "${MACHINA_GITLAB_READ_USERNAME:-}" || -z "${MACHINA_GITLAB_READ_TOKEN:-}" ]]; then
-            echo "::error title=AUTH_INPUTS_MISSING::Trusted read-only GitLab checkout credential is not configured."
-            exit 78
-          fi
-          echo "TRUST_CONTEXT=PASS"
-
-      - name: Fetch exact private GitLab source
-        shell: bash
-        env:
-          MACHINA_GITLAB_READ_USERNAME: ${{ secrets.MACHINA_GITLAB_READ_USERNAME }}
-          MACHINA_GITLAB_READ_TOKEN: ${{ secrets.MACHINA_GITLAB_READ_TOKEN }}
-        run: |
-          set -euo pipefail
+          test -n "${MACHINA_GITLAB_READ_USERNAME:-}"
+          test -n "${MACHINA_GITLAB_READ_TOKEN:-}"
           umask 077
           src="$RUNNER_TEMP/private-source"
           askpass="$RUNNER_TEMP/machina-git-askpass.sh"
-          fetch_log="$RUNNER_TEMP/machina-source-fetch.log"
-
           cat >"$askpass" <<'EOF'
           #!/bin/sh
           case "$1" in
@@ -62,92 +49,43 @@ jobs:
           chmod 700 "$askpass"
           export GIT_ASKPASS="$askpass"
           export GIT_TERMINAL_PROMPT=0
-
-          set +e
-          git clone --filter=blob:none --no-checkout "$MACHINA_GITLAB_REPOSITORY" "$src" >"$fetch_log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=PRIVATE_SOURCE_FETCH_FAIL::Private GitLab checkout failed; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
-
+          git clone --filter=blob:none --no-checkout "$MACHINA_GITLAB_REPOSITORY" "$src" >"$RUNNER_TEMP/fetch.log" 2>&1
           cd "$src"
-          set +e
-          git fetch --depth=1 origin "$MACHINA_GITLAB_SOURCE_SHA" >>"$fetch_log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=IMMUTABLE_SHA_FETCH_FAIL::Exact GitLab SHA could not be fetched; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
-
-          set +e
-          git checkout --detach "$MACHINA_GITLAB_SOURCE_SHA" >>"$fetch_log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=IMMUTABLE_SHA_CHECKOUT_FAIL::Exact GitLab SHA could not be checked out; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
-
+          git fetch --depth=1 origin "$MACHINA_GITLAB_SOURCE_SHA" >>"$RUNNER_TEMP/fetch.log" 2>&1
+          git checkout --detach "$MACHINA_GITLAB_SOURCE_SHA" >>"$RUNNER_TEMP/fetch.log" 2>&1
           observed="$(git rev-parse HEAD)"
-          if [[ "$observed" != "$MACHINA_GITLAB_SOURCE_SHA" ]]; then
-            echo "::error title=SOURCE_IDENTITY_MISMATCH::Fetched source identity does not equal the authorized immutable GitLab SHA."
-            exit 1
-          fi
+          test "$observed" = "$MACHINA_GITLAB_SOURCE_SHA"
           echo "SOURCE_IDENTITY=PASS gitlabCommitSha=$observed"
 
-      - name: Verify pinned Go toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(go version)"
-          if [[ "$version" != *"go1.27.1 "* ]]; then
-            echo "::error title=TOOLCHAIN_MISMATCH::Expected Go 1.27.1."
-            exit 1
-          fi
-          echo "TOOLCHAIN=PASS toolIdentity=go toolVersion=1.27.1"
-
-      - name: Run private verification gates
+      - name: Confirm expected TDD RED
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-source"
-
-          run_private_gate() {
-            local gate="$1"
-            shift
-            local log="$RUNNER_TEMP/machina-${gate}.log"
-            set +e
-            "$@" >"$log" 2>&1
-            local rc=$?
-            set -e
-            if [[ $rc -ne 0 ]]; then
-              echo "::error title=${gate}_FAIL::Private verification gate failed; detailed log withheld by evidence policy."
-              return "$rc"
-            fi
-            echo "${gate}=PASS"
-          }
-
-          assert_clean() {
-            local stage="$1"
-            if ! git diff --quiet --exit-code; then
-              echo "::error title=CLEAN_TREE_${stage}_FAIL::Tracked working tree changed after ${stage}; paths withheld by evidence policy."
-              return 1
-            fi
-            echo "CLEAN_TREE_${stage}=PASS"
-          }
-
-          assert_clean BASELINE
-          run_private_gate MODULE_DOWNLOAD go mod download
-          assert_clean MODULE_DOWNLOAD
-          run_private_gate GO_TEST go test ./... -count=1
-          assert_clean GO_TEST
-          run_private_gate GO_RACE go test -race ./... -count=1
-          assert_clean GO_RACE
-          run_private_gate GO_VET go vet ./...
-          assert_clean GO_VET
+          log="$RUNNER_TEMP/workspace-manifest-red.log"
+          set +e
+          go test ./tools/contractctl/internal/workspace -count=1 >"$log" 2>&1
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            echo "::error title=UNEXPECTED_GREEN::Workspace manifest test unexpectedly passed before implementation."
+            exit 1
+          fi
+          missing_entry=false
+          missing_manifest=false
+          missing_finalize=false
+          grep -q 'undefined: FileEntry' "$log" && missing_entry=true
+          grep -q 'undefined: WorkspaceManifest' "$log" && missing_manifest=true
+          grep -q 'undefined: FinalizeManifest' "$log" && missing_finalize=true
+          echo "RED_MISSING_FILE_ENTRY=$missing_entry"
+          echo "RED_MISSING_WORKSPACE_MANIFEST=$missing_manifest"
+          echo "RED_MISSING_FINALIZE_MANIFEST=$missing_finalize"
+          if [[ "$missing_entry" != true || "$missing_manifest" != true || "$missing_finalize" != true ]]; then
+            echo "::error title=UNEXPECTED_RED::Workspace manifest tests failed for a cause other than the expected missing implementation."
+            exit 1
+          fi
+          echo "EXPECTED_TDD_RED=PASS"
+          exit 1
 
       - name: Destroy ephemeral private workspace
         if: always()
@@ -155,10 +93,5 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf "$RUNNER_TEMP/private-source"
-          rm -f "$RUNNER_TEMP/machina-git-askpass.sh"
-          rm -f "$RUNNER_TEMP/machina-source-fetch.log"
-          rm -f "$RUNNER_TEMP/machina-MODULE_DOWNLOAD.log"
-          rm -f "$RUNNER_TEMP/machina-GO_TEST.log"
-          rm -f "$RUNNER_TEMP/machina-GO_RACE.log"
-          rm -f "$RUNNER_TEMP/machina-GO_VET.log"
+          rm -f "$RUNNER_TEMP/machina-git-askpass.sh" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/workspace-manifest-red.log"
           echo "EPHEMERAL_WORKSPACE_DESTROYED=PASS"
