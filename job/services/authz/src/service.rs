@@ -40,6 +40,7 @@ impl AuthorizationEngine {
             return Decision {
                 allowed: false,
                 policy_version: 0,
+                policy_snapshot_hash: None,
                 reason_codes: vec![DecisionReason::PolicyUnavailable],
                 diagnostic_ref: None,
             };
