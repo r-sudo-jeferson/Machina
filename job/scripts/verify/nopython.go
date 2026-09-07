@@ -6,21 +6,24 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 var prohibitedPythonBasenames = map[string]struct{}{
-	".python-version": {},
-	"pipfile":         {},
-	"pipfile.lock":    {},
-	"poetry.lock":     {},
-	"pyproject.toml":  {},
-	"pytest.ini":      {},
+	".python-version":  {},
+	"pipfile":          {},
+	"pipfile.lock":     {},
+	"poetry.lock":      {},
+	"pyproject.toml":   {},
+	"pytest.ini":       {},
 	"requirements.txt": {},
-	"setup.cfg":       {},
-	"tox.ini":         {},
-	"uv.lock":         {},
+	"setup.cfg":        {},
+	"tox.ini":          {},
+	"uv.lock":          {},
 }
+
+var pythonCommandPattern = regexp.MustCompile(`(?i)(?:^|[;&|]\s*|run:\s*|["']\s*)(?:(?:env|sudo)\s+)*python(?:3(?:\.\d+)*)?(?:\s|$)`)
 
 func verifyNoPython(root string) error {
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -86,15 +89,8 @@ func hasPythonCommand(content []byte) bool {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if strings.HasPrefix(line, "run:") {
-			line = strings.TrimSpace(strings.TrimPrefix(line, "run:"))
-		}
-		for _, prefix := range []string{"python ", "python3 ", "python\t", "python3\t", "python -", "python3 -", "python", "python3"} {
-			if line == prefix || strings.HasPrefix(line, prefix) {
-				if line == "python" || line == "python3" || strings.HasPrefix(line, "python ") || strings.HasPrefix(line, "python3 ") || strings.HasPrefix(line, "python\t") || strings.HasPrefix(line, "python3\t") {
-					return true
-				}
-			}
+		if pythonCommandPattern.MatchString(line) {
+			return true
 		}
 	}
 	return false
