@@ -1,4 +1,4 @@
-name: Machina FOS-003 Workspace CLI GREEN
+name: Machina FOS-003 Atomic Publish RED
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       image: golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa
     env:
       MACHINA_GITLAB_REPOSITORY: https://gitlab.com/machina-group/machina.git
-      MACHINA_GITLAB_SOURCE_SHA: 30a556170f0232fc4b692f2b8f8567efd6d050e383293505eb902080bc3741f8
+      MACHINA_GITLAB_SOURCE_SHA: e0cb82fad59e77e077082d641e432f9993518c05242f4dee8e209532eacdbb11
 
     steps:
       - name: Trust and exact private checkout
@@ -79,12 +79,104 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-source"
-          go mod download >"$RUNNER_TEMP/go-mod-download.log" 2>&1
+          go mod download >"$RUNNER_TEMP/go-mod-download.log" "$RUNNER_TEMP/fos-003-publish-red.log" 2>&1
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
           git diff --quiet
           git diff --cached --quiet
           echo "MODULE_DOWNLOAD=PASS"
           echo "CLEAN_TREE_AFTER_MODULE_DOWNLOAD=PASS"
+
+      - name: Reproduce atomic no-replace publish invariant
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go test ./tools/contractctl/internal/workspace -run '^TestPublishWorkspaceNoReplaceRejectsDestinationCreatedInPublishWindow        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go test ./tools/contractctl/internal/workspace -run '^TestFinalizeExecutionContractPreservesExplicitEmptyCollectionsAcrossCanonicalRoundTrip$' -count=1 >"$RUNNER_TEMP/fos-003-contract-roundtrip.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "FOS003_EXECUTION_CONTRACT_ROUNDTRIP=PASS"
+          echo "CLEAN_TREE_AFTER_EXECUTION_CONTRACT_ROUNDTRIP=PASS"
+
+      - name: Run workspace CLI tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go test ./tools/contractctl -run '^TestRunWorkspaceVerify' -count=1 >"$RUNNER_TEMP/fos-003-cli.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "FOS003_WORKSPACE_CLI=PASS"
+          echo "CLEAN_TREE_AFTER_FOS003_WORKSPACE_CLI=PASS"
+
+      - name: Run FOS-003 workspace tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go test ./tools/contractctl/internal/workspace -count=1 >"$RUNNER_TEMP/fos-003-workspace.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "FOS003_WORKSPACE_TEST=PASS"
+          echo "CLEAN_TREE_AFTER_FOS003_WORKSPACE_TEST=PASS"
+
+      - name: Run full product tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go test ./... -count=1 >"$RUNNER_TEMP/go-test.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "GO_TEST=PASS"
+          echo "CLEAN_TREE_AFTER_GO_TEST=PASS"
+
+      - name: Run race detector
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go test -race ./... -count=1 >"$RUNNER_TEMP/go-race.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "GO_RACE=PASS"
+          echo "CLEAN_TREE_AFTER_GO_RACE=PASS"
+
+      - name: Run go vet
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/private-source"
+          go vet ./... >"$RUNNER_TEMP/go-vet.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "GO_VET=PASS"
+          echo "CLEAN_TREE_AFTER_GO_VET=PASS"
+
+      - name: Destroy ephemeral private workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/private-source"
+          rm -f "$RUNNER_TEMP/machina-git-askpass.sh" "$RUNNER_TEMP/fetch.log" "$RUNNER_TEMP/go-mod-download.log" "$RUNNER_TEMP/fos-003-contract-roundtrip.log" "$RUNNER_TEMP/fos-003-cli.log" "$RUNNER_TEMP/fos-003-workspace.log" "$RUNNER_TEMP/go-test.log" "$RUNNER_TEMP/go-race.log" "$RUNNER_TEMP/go-vet.log"
+          test ! -e "$RUNNER_TEMP/private-source"
+          test ! -e "$RUNNER_TEMP/machina-git-askpass.sh"
+          echo "EPHEMERAL_WORKSPACE_DESTROYED=PASS"
+ -count=1 >"$RUNNER_TEMP/fos-003-publish-red.log" 2>&1
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git diff --quiet
+          git diff --cached --quiet
+          echo "FOS003_ATOMIC_PUBLISH_RED_UNEXPECTED_PASS"
 
       - name: Prove explicit empty execution round-trip
         shell: bash
