@@ -1,14 +1,44 @@
 # Machina — GitHub Construction Environment
 
+FORGE_BINDING_ID: `FORGE-OPS-HIGHEND/v1.0.0`
+
 This repository is the **temporary engineering workspace** for the SaaS.
 
-## Structure
+## Minimal structure
 
-- `AGENTS.md` — mandatory operating instructions for every AI/agent.
+- `AGENTS.md` — mandatory construction contract for every AI/agent/engineer.
 - `job/` — the complete SaaS construction workspace.
+- provider-required metadata such as `.github/workflows/**` may exist only when an active Slice needs it.
 
-GitHub is used for implementation, CI/CD, DevOps, automation, review, validation, preview, deployment work and GAUNTLET execution as required by the active Slice.
+## Roles
 
-GitHub is **not** the official source of truth. The official and permanent repository is GitLab `machina-group/machina`.
+- **GitLab `machina-group/machina`** is the sole official Canon.
+- **GitHub `r-sudo-jeferson/Machina`** is used for implementation, CI/CD, DevOps, automation, review, preview, deployment work, verification and GAUNTLET execution.
+- **PROJECT CEO** plans the full product, architecture, Slice Map and Slice-specific GAUNTLETs; it does not build production code.
+- **PROJECT ENGINEERING** executes one authorized Slice at a time.
 
-The FORGE OS CEO Project defines the ordered Slices and their GAUNTLETs. The FORGE OS Engineering Project executes one Slice at a time here, converges until the authorized requirements are met, then promotes the exact accepted result back to GitLab.
+The Engineering Project configuration, CEO Project configuration, GitLab `AGENTS.md` and this `AGENTS.md` must declare the same `FORGE_BINDING_ID`. Drift blocks construction writes.
+
+## Product boundary
+
+All SaaS construction belongs under `job/**`.
+
+## Transactional flow
+
+```text
+GitLab Canon /job @ bound SHA
+  -> active authorized Slice + GAUNTLET
+  -> GitHub /job construction
+  -> specialist/tool routing by actual need
+  -> implementation + verification
+  -> independent critique
+  -> GAUNTLET
+  -> freeze exact accepted candidate SHA
+  -> promote exact candidate /job to GitLab
+  -> verify promotion
+  -> next Slice starts from GitLab Canon
+```
+
+GitHub never becomes Canon and there is no permanent repository synchronization.
+
+Read `AGENTS.md` before any operation. It defines the binding protocol, preflight, specialist/plugin routing, non-degradation, public-repository safety, candidate freeze and exact-promotion rules.
