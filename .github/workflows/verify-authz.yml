@@ -35,13 +35,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify Rust 1.98.1 authorization service
+      - name: Capture Cargo.lock with Rust 1.98.1
         working-directory: job
         run: |
           set -euo pipefail
           rustup set profile minimal
           rustup toolchain install 1.98.1 --component clippy --component rustfmt
           test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 generate-lockfile
+          echo 'MACHINA_CARGO_LOCK_BEGIN'
+          base64 Cargo.lock
+          echo 'MACHINA_CARGO_LOCK_END'
           cargo +1.98.1 fmt --all --check
           cargo +1.98.1 clippy --workspace --all-targets -- -D warnings
           cargo +1.98.1 test --workspace --all-targets
