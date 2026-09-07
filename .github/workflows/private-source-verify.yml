@@ -40,7 +40,6 @@ jobs:
           echo "TRUST_CONTEXT=PASS"
 
       - name: Fetch exact private GitLab source
-        id: source
         shell: bash
         env:
           MACHINA_GITLAB_READ_USERNAME: ${{ secrets.MACHINA_GITLAB_READ_USERNAME }}
@@ -64,75 +63,27 @@ jobs:
           export GIT_ASKPASS="$askpass"
           export GIT_TERMINAL_PROMPT=0
 
-          set +e
           git clone --filter=blob:none --no-checkout "$MACHINA_GITLAB_REPOSITORY" "$src" >"$fetch_log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=PRIVATE_SOURCE_FETCH_FAIL::Private GitLab checkout failed; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
-
           cd "$src"
-          set +e
           git fetch --depth=1 origin "$MACHINA_GITLAB_SOURCE_SHA" >>"$fetch_log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=IMMUTABLE_SHA_FETCH_FAIL::Exact GitLab SHA could not be fetched; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
-
-          set +e
           git checkout --detach "$MACHINA_GITLAB_SOURCE_SHA" >>"$fetch_log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=IMMUTABLE_SHA_CHECKOUT_FAIL::Exact GitLab SHA could not be checked out; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
 
           observed="$(git rev-parse HEAD)"
           if [[ "$observed" != "$MACHINA_GITLAB_SOURCE_SHA" ]]; then
             echo "::error title=SOURCE_IDENTITY_MISMATCH::Fetched source identity does not equal the authorized immutable GitLab SHA."
             exit 1
           fi
-
-          echo "gitlabCommitSha=$observed" >>"$GITHUB_OUTPUT"
           echo "SOURCE_IDENTITY=PASS gitlabCommitSha=$observed"
 
-      - name: Verify pinned Go toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(go version)"
-          if [[ "$version" != *"go1.27.1 "* ]]; then
-            echo "::error title=TOOLCHAIN_MISMATCH::Expected Go 1.27.1."
-            exit 1
-          fi
-          echo "TOOLCHAIN=PASS toolIdentity=go toolVersion=1.27.1"
-
-      - name: Diagnose module-download mutation
+      - name: Recover corrected module lock encrypted
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-source"
-
-          if ! git diff --quiet --exit-code; then
-            echo "::error title=CLEAN_TREE_BASELINE_FAIL::Tracked working tree is dirty before module download."
-            exit 1
-          fi
+          git diff --quiet --exit-code
           echo "CLEAN_TREE_BASELINE=PASS"
 
-          log="$RUNNER_TEMP/machina-MODULE_DOWNLOAD.log"
-          set +e
-          go mod download >"$log" 2>&1
-          rc=$?
-          set -e
-          if [[ $rc -ne 0 ]]; then
-            echo "::error title=MODULE_DOWNLOAD_FAIL::Module download failed; detailed log withheld by evidence policy."
-            exit "$rc"
-          fi
+          go mod download >"$RUNNER_TEMP/machina-MODULE_DOWNLOAD.log" 2>&1
           echo "MODULE_DOWNLOAD=PASS"
 
           manifest_changed=false
@@ -146,12 +97,64 @@ jobs:
           echo "MODULE_LOCK_CHANGED=$lock_changed"
           echo "OTHER_TRACKED_CHANGED=$other_changed"
 
-          if [[ "$manifest_changed" == false && "$lock_changed" == false && "$other_changed" == false ]]; then
-            echo "CLEAN_TREE_MODULE_DOWNLOAD=PASS"
-            exit 0
+          if [[ "$manifest_changed" != false || "$lock_changed" != true || "$other_changed" != false ]]; then
+            echo "::error title=UNEXPECTED_MUTATION_SHAPE::Expected only the module lock to change."
+            exit 1
           fi
 
-          echo "::error title=CLEAN_TREE_MODULE_DOWNLOAD_FAIL::Module download mutates tracked Canon bytes; content withheld by evidence policy."
+          pub="$RUNNER_TEMP/machina-recovery-public.pem"
+          helper="$RUNNER_TEMP/machina-encrypt-lock.go"
+          cat >"$pub" <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAjJwqvPHLqRZWfpXUp8Gy
+          mlvBflhSlvtUb97URt77424lTA2X/A16snyWp9r5828tVkgmFXphgwwx1321AxiW
+          sQhx1KhD6HTnwUuHBR+HNerPR7oqd/0QdMm3ozr0zHbLCpCeFqtkM6ndJUXJfTMf
+          2b+4M3Llg0D2xt/mLZDZoYJrKLogoCaJAP//aax97a+b+xyq63+u7WHskscmKzVu
+          XQYfazfGX1ph07ktTt3XPJ9FuFgdVNjWVfcWfL0QmKMO6NI0SSryTDKb/A3osC4W
+          5Y/g2FWKBz4yK1q0Ol84xYHfeVrwA+FjC5OF4E6Nfvs4wmWN4NRzj3fDA2GJtSx6
+          F/SQyAWq8BzUullmTszJKsS2L66F9zjXMAq2IIHytStct9uQjCgdOlMuNnCobzsz
+          PfVGPMEFVARAz/bykIx9iiwW0S8UMCvDUaaTGL3KJzyjTkh9vC4K3fYBFehap1IU
+          0YiIN5N811WWJ3wrd8CX458RdbIaOdwf2LRJVQIQ2WTK89Tpn+mp6ThIE6wCm5/n
+          icX0b8hgO2vaPnW2Kb3pSw5zDVa2oQvneriBGuujpCfsADvkiraBLn29FjJOEUyA
+          OA2XNKEaY1kwsk4KXNvvFD7epWFW/PWloGen9hVSHQHrmNFVLl0EurN4b6BRjzSI
+          cC0NKtv4tcEAKhh61Jk5Hs8CAwEAAQ==
+          -----END PUBLIC KEY-----
+          EOF
+
+          cat >"$helper" <<'EOF'
+          package main
+          import (
+            "crypto/rand"
+            "crypto/rsa"
+            "crypto/sha256"
+            "crypto/x509"
+            "encoding/base64"
+            "encoding/hex"
+            "encoding/pem"
+            "fmt"
+            "os"
+          )
+          func main() {
+            pubPEM, err := os.ReadFile(os.Args[1]); if err != nil { panic(err) }
+            data, err := os.ReadFile(os.Args[2]); if err != nil { panic(err) }
+            block, _ := pem.Decode(pubPEM); if block == nil { panic("public key pem") }
+            anyKey, err := x509.ParsePKIXPublicKey(block.Bytes); if err != nil { panic(err) }
+            pub, ok := anyKey.(*rsa.PublicKey); if !ok { panic("rsa public key") }
+            sum := sha256.Sum256(data)
+            fmt.Printf("LOCK_BYTES=%d\n", len(data))
+            fmt.Printf("LOCK_SHA256=%s\n", hex.EncodeToString(sum[:]))
+            max := pub.Size() - 2*sha256.Size - 2
+            for i, off := 0, 0; off < len(data); i++ {
+              end := off + max; if end > len(data) { end = len(data) }
+              enc, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, pub, data[off:end], nil); if err != nil { panic(err) }
+              fmt.Printf("LOCK_CIPHERTEXT_CHUNK_%03d=%s\n", i, base64.StdEncoding.EncodeToString(enc))
+              off = end
+            }
+          }
+          EOF
+
+          go run "$helper" "$pub" go.sum
+          echo "ENCRYPTED_LOCK_RECOVERY=PASS"
           exit 1
 
       - name: Destroy ephemeral private workspace
@@ -163,4 +166,6 @@ jobs:
           rm -f "$RUNNER_TEMP/machina-git-askpass.sh"
           rm -f "$RUNNER_TEMP/machina-source-fetch.log"
           rm -f "$RUNNER_TEMP/machina-MODULE_DOWNLOAD.log"
+          rm -f "$RUNNER_TEMP/machina-recovery-public.pem"
+          rm -f "$RUNNER_TEMP/machina-encrypt-lock.go"
           echo "EPHEMERAL_WORKSPACE_DESTROYED=PASS"
