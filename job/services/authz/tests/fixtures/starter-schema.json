@@ -1,0 +1,23 @@
+{
+  "": {
+    "entityTypes": {
+      "User": {},
+      "PlatformContext": {}
+    },
+    "actions": {
+      "context.read": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["PlatformContext"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "starter_role": {"type": "String"},
+              "membership_status": {"type": "String"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
