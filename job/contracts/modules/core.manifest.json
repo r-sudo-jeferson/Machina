@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "machina.core",
+  "version": "1.0.0",
+  "kind": "platform-core",
+  "capabilities": [
+    "session.read",
+    "tenant.create",
+    "tenant.switch",
+    "workspace.read",
+    "context.read",
+    "ask.context.read"
+  ],
+  "navigation": [
+    {
+      "id": "context",
+      "labelKey": "nav.context",
+      "route": "/context",
+      "requiredCapability": "context.read"
+    }
+  ],
+  "askTools": [
+    {
+      "id": "context.read",
+      "riskTier": "R0",
+      "readOnly": true,
+      "inputSchema": "../ai/context-tool.schema.json",
+      "resultSchema": "../ai/context-tool.result.schema.json",
+      "requiredCapability": "ask.context.read"
+    }
+  ]
+}
