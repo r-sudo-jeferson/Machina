@@ -31,6 +31,10 @@ jobs:
           go-version: '1.27.1'
           cache: false
 
-      - name: Diagnose module canonicalization
+      - name: Verify module is canonical
         working-directory: job
         run: go mod tidy -diff
+
+      - name: Verify binding compatibility contract
+        working-directory: job
+        run: go test -count=1 ./scripts/verify/...
