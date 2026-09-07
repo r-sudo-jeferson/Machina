@@ -1,4 +1,5 @@
 use std::env;
+use std::error::Error;
 use std::fmt;
 use std::io;
 use std::process::ExitCode;
@@ -51,6 +52,16 @@ impl fmt::Display for StartupError {
                 formatter.write_str("failed to register process termination signal handler")
             }
             Self::Runtime(error) => write!(formatter, "authorization runtime failed: {error}"),
+        }
+    }
+}
+
+impl Error for StartupError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Signal(error) => Some(error),
+            Self::Runtime(error) => Some(error),
+            Self::MissingEnvironment(_) | Self::InvalidRuntimeConfig(_) => None,
         }
     }
 }
