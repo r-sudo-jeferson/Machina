@@ -19,6 +19,23 @@ fn request() -> Request {
     .expect("request")
 }
 
+fn schema_incompatible_request() -> Request {
+    Request::new(
+        "User::\"subject-a\""
+            .parse::<EntityUid>()
+            .expect("principal"),
+        "Action::\"context.read\""
+            .parse::<EntityUid>()
+            .expect("action"),
+        "Workspace::\"active\""
+            .parse::<EntityUid>()
+            .expect("resource"),
+        Context::empty(),
+        None,
+    )
+    .expect("unvalidated request")
+}
+
 fn schema() -> Schema {
     let (schema, warnings) = Schema::from_cedarschema_str(
         r#"
@@ -127,6 +144,22 @@ fn newer_policy_snapshot_than_required_denies_before_evaluation() {
         vec![DecisionReason::StalePolicyVersion]
     );
     assert!(decision.diagnostic_ref.is_none());
+}
+
+#[test]
+fn schema_incompatible_request_denies_before_authorization() {
+    let evaluator = Evaluator::new();
+    let snapshot = snapshot(7, matching_permit_policy());
+
+    let decision = evaluator.decide(&schema_incompatible_request(), 7, &snapshot);
+
+    assert!(!decision.allowed, "schema uncertainty must deny");
+    assert_eq!(decision.policy_version, 7);
+    assert_eq!(decision.reason_codes, vec![DecisionReason::EvaluationError]);
+    assert_eq!(
+        decision.diagnostic_ref.as_deref(),
+        Some("cedar-request-validation-error")
+    );
 }
 
 #[test]
