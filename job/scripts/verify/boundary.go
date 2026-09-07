@@ -64,6 +64,12 @@ func verifyBoundary(root string) error {
 		}
 
 		if _, ok := allowedRootDirs[top]; !ok {
+			// Git does not track empty directories. Continue through an invalid
+			// directory so the error identifies the concrete tracked artifact,
+			// not merely its first path segment.
+			if entry.IsDir() {
+				return nil
+			}
 			return fmt.Errorf("repository boundary violation: path %q is outside allowed /job or provider metadata boundary", rel)
 		}
 
