@@ -232,7 +232,13 @@ type coreManifest struct {
 	Version       string   `json:"version"`
 	Kind          string   `json:"kind"`
 	Capabilities  []string `json:"capabilities"`
-	AskTools      []struct {
+	Navigation    []struct {
+		ID                 string `json:"id"`
+		LabelKey           string `json:"labelKey"`
+		Route              string `json:"route"`
+		RequiredCapability string `json:"requiredCapability"`
+	} `json:"navigation"`
+	AskTools []struct {
 		ID                 string `json:"id"`
 		RiskTier           string `json:"riskTier"`
 		ReadOnly           bool   `json:"readOnly"`
@@ -260,6 +266,13 @@ func validateCoreManifest(path string) error {
 		if !slices.Contains(manifest.Capabilities, capability) {
 			return fmt.Errorf("required capability %q is missing", capability)
 		}
+	}
+	if len(manifest.Navigation) != 1 {
+		return fmt.Errorf("S001 must expose exactly one core navigation entry, got %d", len(manifest.Navigation))
+	}
+	nav := manifest.Navigation[0]
+	if nav.ID != "context" || nav.LabelKey != "nav.context" || nav.Route != "/context" || nav.RequiredCapability != "context.read" {
+		return fmt.Errorf("core context navigation must remain capability-gated and deterministic")
 	}
 	if len(manifest.AskTools) != 1 {
 		return fmt.Errorf("S001 must expose exactly one Ask tool, got %d", len(manifest.AskTools))
