@@ -1,0 +1,67 @@
+name: Refresh authz signal lock temporary
+
+on:
+  push:
+    branches:
+      - forge/mch-s001-1.0.0
+    paths:
+      - 'job/services/authz/Cargo.toml'
+      - '.github/workflows/refresh-authz-signal-lock.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-authz-signal-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout construction branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: forge/mch-s001-1.0.0
+          fetch-depth: 1
+
+      - name: Refresh and validate signal lock delta
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1
+
+          cargo +1.98.1 metadata --format-version 1 >/dev/null
+          cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
+          git diff --check -- Cargo.lock
+
+          diff="$(git diff -- Cargo.lock)"
+          test -n "$diff"
+          printf '%s\n' "$diff"
+
+          if git diff --unified=0 -- Cargo.lock | grep '^-' | grep -v '^---'; then
+            echo 'Cargo.lock refresh attempted a deletion' >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$diff" | grep -F '+ "signal-hook-registry",'
+          printf '%s\n' "$diff" | grep -F '+name = "signal-hook-registry"'
+
+          added_packages="$(git diff --unified=0 -- Cargo.lock | sed -n 's/^+name = "\([^"]*\)"/\1/p')"
+          test "$added_packages" = 'signal-hook-registry'
+
+          status="$(git status --porcelain --untracked-files=no)"
+          printf '%s\n' "$status"
+          test "$status" = ' M Cargo.lock'
+
+      - name: Commit only verified lock update
+        run: |
+          set -euo pipefail
+          git config user.name 'forge-engineering'
+          git config user.email 'forge-engineering@users.noreply.github.com'
+          git add job/Cargo.lock
+          test "$(git diff --cached --name-only)" = 'job/Cargo.lock'
+          git commit -m 'build(authz): lock signal lifecycle dependency'
+          git push origin HEAD:forge/mch-s001-1.0.0
