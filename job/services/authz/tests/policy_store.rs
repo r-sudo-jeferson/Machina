@@ -1,8 +1,7 @@
 use cedar_policy::{Entities, PolicySet, Schema};
 use machina_authz::policy_store::{PolicyCache, PolicyLoadError, PolicySnapshot};
 
-const TEST_SNAPSHOT_HASH: &str =
-    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const TEST_SNAPSHOT_HASH: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn schema() -> Schema {
     let (schema, warnings) = Schema::from_cedarschema_str(
@@ -59,13 +58,8 @@ fn policy_with_unknown_principal_attribute_is_rejected_strictly() {
     .parse()
     .expect("policy syntax");
 
-    let result = PolicySnapshot::try_new(
-        7,
-        TEST_SNAPSHOT_HASH,
-        schema(),
-        policies,
-        Entities::empty(),
-    );
+    let result =
+        PolicySnapshot::try_new(7, TEST_SNAPSHOT_HASH, schema(), policies, Entities::empty());
 
     assert!(matches!(result, Err(PolicyLoadError::ValidationFailed)));
 }
