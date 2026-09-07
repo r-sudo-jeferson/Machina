@@ -56,13 +56,9 @@ pub fn snapshot() -> Result<PolicySnapshot, StarterPolicyError> {
         .parse::<PolicySet>()
         .map_err(|_| StarterPolicyError::PolicyInvalid)?;
 
-    PolicySnapshot::try_new(
-        STARTER_POLICY_VERSION,
-        schema,
-        policies,
-        Entities::empty(),
+    PolicySnapshot::try_new(STARTER_POLICY_VERSION, schema, policies, Entities::empty()).map_err(
+        |error| match error {
+            PolicyLoadError::ValidationFailed => StarterPolicyError::ValidationFailed,
+        },
     )
-    .map_err(|error| match error {
-        PolicyLoadError::ValidationFailed => StarterPolicyError::ValidationFailed,
-    })
 }
