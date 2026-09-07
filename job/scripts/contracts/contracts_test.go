@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -13,6 +14,32 @@ func TestMCHS001ContractSetValidates(t *testing.T) {
 	root := jobRoot(t)
 	if err := ValidateAll(root); err != nil {
 		t.Fatalf("ValidateAll() rejected MCH-S001 contract set: %v", err)
+	}
+}
+
+func TestContractDigestManifestValidates(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidateContractDigests(jobRoot(t)); err != nil {
+		t.Fatalf("ValidateContractDigests() rejected canonical contracts: %v", err)
+	}
+}
+
+func TestContractDigestManifestRejectsTamperedContract(t *testing.T) {
+	t.Parallel()
+
+	root := copyContractTree(t)
+	path := filepath.Join(root, "contracts", "ai", "context-tool.schema.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ValidateContractDigests(root); err == nil {
+		t.Fatal("digest validation accepted a tampered contract")
 	}
 }
 
@@ -59,6 +86,18 @@ func TestContextToolInputRejectsUnknownCapability(t *testing.T) {
 	if err := ValidateJSONSchemaInstance(schemaPath, instance); err == nil {
 		t.Fatal("context tool schema accepted an undeclared execution capability")
 	}
+}
+
+func copyContractTree(t *testing.T) string {
+	t.Helper()
+
+	source := filepath.Join(jobRoot(t), "contracts")
+	root := t.TempDir()
+	destination := filepath.Join(root, "contracts")
+	if err := os.CopyFS(destination, os.DirFS(source)); err != nil {
+		t.Fatalf("copy contracts: %v", err)
+	}
+	return root
 }
 
 func jobRoot(t *testing.T) string {
