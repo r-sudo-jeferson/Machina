@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use cedar_policy::{Entities, PolicySet, Schema, ValidationMode, Validator};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,5 +39,30 @@ impl PolicySnapshot {
 
     pub(crate) fn evaluation_parts(&self) -> (&PolicySet, &Entities) {
         (&self.policies, &self.entities)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct PolicyCache {
+    snapshots: HashMap<String, PolicySnapshot>,
+}
+
+impl PolicyCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, tenant_id: &str, snapshot: PolicySnapshot) {
+        self.snapshots.insert(tenant_id.to_owned(), snapshot);
+    }
+
+    pub fn get_exact(
+        &self,
+        tenant_id: &str,
+        required_policy_version: u64,
+    ) -> Option<&PolicySnapshot> {
+        self.snapshots
+            .get(tenant_id)
+            .filter(|snapshot| snapshot.version() == required_policy_version)
     }
 }
