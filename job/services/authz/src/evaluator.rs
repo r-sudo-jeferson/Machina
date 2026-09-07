@@ -42,8 +42,32 @@ impl Evaluator {
             };
         }
 
+        let Some(principal) = request.principal() else {
+            return request_validation_error(policy_version);
+        };
+        let Some(action) = request.action() else {
+            return request_validation_error(policy_version);
+        };
+        let Some(resource) = request.resource() else {
+            return request_validation_error(policy_version);
+        };
+        let Some(context) = request.context() else {
+            return request_validation_error(policy_version);
+        };
+
+        let validated_request = match Request::new(
+            principal.clone(),
+            action.clone(),
+            resource.clone(),
+            context.clone(),
+            Some(snapshot.schema()),
+        ) {
+            Ok(request) => request,
+            Err(_) => return request_validation_error(policy_version),
+        };
+
         let (policies, entities) = snapshot.evaluation_parts();
-        let response = Authorizer::new().is_authorized(request, policies, entities);
+        let response = Authorizer::new().is_authorized(&validated_request, policies, entities);
 
         // Cedar can continue evaluating other policies after an evaluation
         // error. Machina treats any such uncertainty as a hard deny and only
@@ -78,5 +102,14 @@ impl Evaluator {
             reason_codes: vec![reason],
             diagnostic_ref: None,
         }
+    }
+}
+
+fn request_validation_error(policy_version: u64) -> Decision {
+    Decision {
+        allowed: false,
+        policy_version,
+        reason_codes: vec![DecisionReason::EvaluationError],
+        diagnostic_ref: Some("cedar-request-validation-error".to_owned()),
     }
 }
