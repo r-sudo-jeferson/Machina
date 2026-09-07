@@ -27,6 +27,16 @@ fn distinct_addrs() -> (SocketAddr, SocketAddr) {
     (grpc, probe)
 }
 
+fn spawn_authz(grpc_addr: SocketAddr, probe_addr: SocketAddr) -> Child {
+    Command::new(binary_path())
+        .env(GRPC_ENV, grpc_addr.to_string())
+        .env(PROBE_ENV, probe_addr.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start authz executable")
+}
+
 fn try_http_status(addr: SocketAddr, path: &str) -> Option<u16> {
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(100)).ok()?;
     stream
@@ -74,6 +84,32 @@ fn terminate(mut child: Child) {
     );
 }
 
+#[cfg(unix)]
+fn send_sigterm(child: &Child) {
+    let status = Command::new("kill")
+        .arg("-TERM")
+        .arg(child.id().to_string())
+        .status()
+        .expect("send SIGTERM to authz process");
+    assert!(status.success(), "SIGTERM command must succeed");
+}
+
+#[cfg(unix)]
+fn await_clean_exit(mut child: Child) {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline {
+        if let Some(status) = child.try_wait().expect("poll authz process") {
+            assert!(status.success(), "SIGTERM must produce a clean process exit");
+            return;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+    panic!("authz process did not exit after SIGTERM");
+}
+
 #[test]
 fn executable_fails_fast_when_required_listener_configuration_is_missing() {
     let output = Command::new(binary_path())
@@ -104,15 +140,20 @@ fn executable_rejects_colliding_listener_addresses() {
 #[test]
 fn executable_serves_health_but_stays_not_ready_without_loaded_policy_source() {
     let (grpc_addr, probe_addr) = distinct_addrs();
-    let child = Command::new(binary_path())
-        .env(GRPC_ENV, grpc_addr.to_string())
-        .env(PROBE_ENV, probe_addr.to_string())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("start authz executable");
+    let child = spawn_authz(grpc_addr, probe_addr);
 
     await_http_status(probe_addr, "/healthz", 200);
     await_http_status(probe_addr, "/readyz", 503);
     terminate(child);
+}
+
+#[cfg(unix)]
+#[test]
+fn executable_handles_sigterm_with_clean_shutdown() {
+    let (grpc_addr, probe_addr) = distinct_addrs();
+    let child = spawn_authz(grpc_addr, probe_addr);
+
+    await_http_status(probe_addr, "/healthz", 200);
+    send_sigterm(&child);
+    await_clean_exit(child);
 }
