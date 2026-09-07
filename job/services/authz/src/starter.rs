@@ -3,6 +3,8 @@ use cedar_policy::{Entities, PolicySet, Schema};
 use crate::policy_store::{PolicyLoadError, PolicySnapshot};
 
 pub const STARTER_POLICY_VERSION: u64 = 1;
+pub const STARTER_POLICY_HASH: &str =
+    "218c923c581ab330dce012de2f0b47e871ecb7574db36151f6b95ded84da8873";
 
 const STARTER_SCHEMA: &str = r#"
 entity User = {};
@@ -39,6 +41,7 @@ permit(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StarterPolicyError {
+    InvalidSnapshotHash,
     SchemaInvalid,
     SchemaWarning,
     PolicyInvalid,
@@ -56,9 +59,15 @@ pub fn snapshot() -> Result<PolicySnapshot, StarterPolicyError> {
         .parse::<PolicySet>()
         .map_err(|_| StarterPolicyError::PolicyInvalid)?;
 
-    PolicySnapshot::try_new(STARTER_POLICY_VERSION, schema, policies, Entities::empty()).map_err(
-        |error| match error {
-            PolicyLoadError::ValidationFailed => StarterPolicyError::ValidationFailed,
-        },
+    PolicySnapshot::try_new(
+        STARTER_POLICY_VERSION,
+        STARTER_POLICY_HASH,
+        schema,
+        policies,
+        Entities::empty(),
     )
+    .map_err(|error| match error {
+        PolicyLoadError::InvalidSnapshotHash => StarterPolicyError::InvalidSnapshotHash,
+        PolicyLoadError::ValidationFailed => StarterPolicyError::ValidationFailed,
+    })
 }
