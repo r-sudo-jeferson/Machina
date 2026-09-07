@@ -15,9 +15,11 @@ fail() {
 [[ -f sqlc.yaml ]] || fail 'required sqlc config is missing: sqlc.yaml'
 [[ -d db/queries ]] || fail 'required sqlc query directory is missing: db/queries'
 find db/queries -type f -name '*.sql' -print -quit | grep -q . || fail 'db/queries contains no SQL query contracts'
-[[ -d "$GENERATED_DIR" ]] || fail "required generated package is missing: ${GENERATED_DIR}"
+if grep -RniE 'select[[:space:]]+\*' db/queries --include='*.sql'; then
+  fail 'SELECT * is forbidden in database query contracts'
+fi
 
-if [[ -n "$(git status --porcelain -- "$GENERATED_DIR")" ]]; then
+if [[ -d "$GENERATED_DIR" && -n "$(git status --porcelain -- "$GENERATED_DIR")" ]]; then
   fail 'generated sqlc package is dirty before verification'
 fi
 
@@ -41,7 +43,12 @@ tar -xzf "$tmpdir/$SQLC_ARCHIVE" -C "$tmpdir" sqlc
 
 if [[ -n "$(git status --porcelain -- "$GENERATED_DIR")" ]]; then
   git status --short -- "$GENERATED_DIR" >&2
-  fail 'checked-in sqlc output is stale or non-deterministic'
+  while IFS= read -r file; do
+    printf 'SQLC_GENERATED_FILE_BEGIN %s\n' "$file" >&2
+    base64 -w0 "$file" >&2
+    printf '\nSQLC_GENERATED_FILE_END %s\n' "$file" >&2
+  done < <(find "$GENERATED_DIR" -maxdepth 1 -type f -print | sort)
+  fail 'checked-in sqlc output is missing, stale, or non-deterministic'
 fi
 
 go test -count=1 ./internal/platform/db/sqlcgen/...
