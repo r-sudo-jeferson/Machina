@@ -51,6 +51,14 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- Serialize ownership-reducing transitions on the canonical tenant row.
+    -- The function is VOLATILE (the PostgreSQL default), so the SELECT below
+    -- executes with a fresh READ COMMITTED snapshot after any lock wait.
+    PERFORM 1
+    FROM iam.tenants AS tenant
+    WHERE tenant.id = OLD.tenant_id
+    FOR UPDATE;
+
     SELECT EXISTS (
         SELECT 1
         FROM iam.memberships AS candidate
@@ -93,6 +101,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE machina_migrator IN SCHEMA ops REVOKE ALL ON T
 ALTER DEFAULT PRIVILEGES FOR ROLE machina_migrator IN SCHEMA ai REVOKE ALL ON TABLES FROM PUBLIC;
 
 COMMENT ON FUNCTION ops.current_tenant_id() IS 'Returns only the transaction-local app.tenant_id; missing/empty context resolves to NULL so tenant RLS denies by default.';
-COMMENT ON FUNCTION iam.enforce_recoverable_owner() IS 'Rejects deletion, revocation, or demotion of the final active tenant owner. Concurrency serialization is verified separately.';
+COMMENT ON FUNCTION iam.enforce_recoverable_owner() IS 'Serializes ownership-reducing transitions per tenant and rejects deletion, revocation, or demotion of the final active tenant owner.';
 
 COMMIT;
