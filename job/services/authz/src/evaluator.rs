@@ -1,4 +1,5 @@
-use cedar_policy::{Authorizer, Decision as CedarDecision, Entities, PolicySet, Request};
+use crate::policy_store::PolicySnapshot;
+use cedar_policy::{Authorizer, Decision as CedarDecision, Request};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecisionReason {
@@ -16,23 +17,6 @@ pub struct Decision {
     pub diagnostic_ref: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct VersionedPolicySet {
-    pub version: u64,
-    pub policies: PolicySet,
-    pub entities: Entities,
-}
-
-impl VersionedPolicySet {
-    pub fn new(version: u64, policies: PolicySet, entities: Entities) -> Self {
-        Self {
-            version,
-            policies,
-            entities,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct Evaluator;
 
@@ -45,19 +29,20 @@ impl Evaluator {
         &self,
         request: &Request,
         required_policy_version: u64,
-        snapshot: &VersionedPolicySet,
+        snapshot: &PolicySnapshot,
     ) -> Decision {
-        if snapshot.version != required_policy_version {
+        let policy_version = snapshot.version();
+        if policy_version != required_policy_version {
             return Decision {
                 allowed: false,
-                policy_version: snapshot.version,
+                policy_version,
                 reason_codes: vec![DecisionReason::StalePolicyVersion],
                 diagnostic_ref: None,
             };
         }
 
-        let response =
-            Authorizer::new().is_authorized(request, &snapshot.policies, &snapshot.entities);
+        let (policies, entities) = snapshot.evaluation_parts();
+        let response = Authorizer::new().is_authorized(request, policies, entities);
 
         // Cedar can continue evaluating other policies after an evaluation
         // error. Machina treats any such uncertainty as a hard deny and only
@@ -65,7 +50,7 @@ impl Evaluator {
         if response.diagnostics().errors().next().is_some() {
             return Decision {
                 allowed: false,
-                policy_version: snapshot.version,
+                policy_version,
                 reason_codes: vec![DecisionReason::EvaluationError],
                 diagnostic_ref: Some("cedar-evaluation-error".to_owned()),
             };
@@ -74,7 +59,7 @@ impl Evaluator {
         if response.decision() == CedarDecision::Allow {
             return Decision {
                 allowed: true,
-                policy_version: snapshot.version,
+                policy_version,
                 reason_codes: Vec::new(),
                 diagnostic_ref: None,
             };
@@ -88,7 +73,7 @@ impl Evaluator {
 
         Decision {
             allowed: false,
-            policy_version: snapshot.version,
+            policy_version,
             reason_codes: vec![reason],
             diagnostic_ref: None,
         }
