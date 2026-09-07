@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
-use std::task::{Context as TaskContext, Poll, Wake, Waker};
+use std::task::{Context as TaskContext, Poll, Waker};
 
 use cedar_policy::{Entities, PolicySet, Schema};
 use machina_authz::grpc::AuthorizationServiceHandler;
@@ -10,15 +9,9 @@ use machina_authz::proto::DecisionRequest;
 use machina_authz::proto::authorization_service_server::AuthorizationService;
 use tonic::{Code, Request as TonicRequest};
 
-struct NoopWake;
-
-impl Wake for NoopWake {
-    fn wake(self: Arc<Self>) {}
-}
-
 fn ready<F: Future>(future: F) -> F::Output {
-    let waker = Waker::from(Arc::new(NoopWake));
-    let mut context = TaskContext::from_waker(&waker);
+    let waker = Waker::noop();
+    let mut context = TaskContext::from_waker(waker);
     let mut future = Box::pin(future);
 
     match future.as_mut().poll(&mut context) {
