@@ -1,5 +1,6 @@
 use std::env;
 use std::fmt;
+use std::io;
 use std::process::ExitCode;
 
 use machina_authz::grpc::AuthorizationServiceHandler;
@@ -18,6 +19,7 @@ const RUNTIME_ERROR_EXIT_CODE: u8 = 70;
 enum StartupError {
     MissingEnvironment(&'static str),
     InvalidRuntimeConfig(RuntimeConfigError),
+    Signal(io::Error),
     Runtime(RuntimeServeError),
 }
 
@@ -25,7 +27,7 @@ impl StartupError {
     fn exit_code(&self) -> u8 {
         match self {
             Self::MissingEnvironment(_) | Self::InvalidRuntimeConfig(_) => CONFIG_ERROR_EXIT_CODE,
-            Self::Runtime(_) => RUNTIME_ERROR_EXIT_CODE,
+            Self::Signal(_) | Self::Runtime(_) => RUNTIME_ERROR_EXIT_CODE,
         }
     }
 }
@@ -45,6 +47,9 @@ impl fmt::Display for StartupError {
             Self::InvalidRuntimeConfig(RuntimeConfigError::ZeroPort) => {
                 formatter.write_str("listener ports must be non-zero")
             }
+            Self::Signal(_) => {
+                formatter.write_str("failed to register process termination signal handler")
+            }
             Self::Runtime(error) => write!(formatter, "authorization runtime failed: {error}"),
         }
     }
@@ -52,6 +57,24 @@ impl fmt::Display for StartupError {
 
 fn required_environment(name: &'static str) -> Result<String, StartupError> {
     env::var(name).map_err(|_| StartupError::MissingEnvironment(name))
+}
+
+#[cfg(unix)]
+async fn wait_for_termination_signal() -> Result<(), StartupError> {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut terminate = signal(SignalKind::terminate()).map_err(StartupError::Signal)?;
+    let mut interrupt = signal(SignalKind::interrupt()).map_err(StartupError::Signal)?;
+
+    tokio::select! {
+        _ = terminate.recv() => Ok(()),
+        _ = interrupt.recv() => Ok(()),
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_termination_signal() -> Result<(), StartupError> {
+    tokio::signal::ctrl_c().await.map_err(StartupError::Signal)
 }
 
 async fn run() -> Result<(), StartupError> {
@@ -62,11 +85,18 @@ async fn run() -> Result<(), StartupError> {
 
     let handler = AuthorizationServiceHandler::new(PolicyCache::new());
     let probes = ProbeState::new();
-    let (_shutdown_tx, shutdown_rx) = watch::channel(false);
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let runtime = serve(config, handler, probes, shutdown_rx);
+    tokio::pin!(runtime);
 
-    serve(config, handler, probes, shutdown_rx)
-        .await
-        .map_err(StartupError::Runtime)
+    tokio::select! {
+        result = runtime.as_mut() => result.map_err(StartupError::Runtime),
+        signal = wait_for_termination_signal() => {
+            signal?;
+            let _ = shutdown_tx.send(true);
+            runtime.as_mut().await.map_err(StartupError::Runtime)
+        }
+    }
 }
 
 #[tokio::main]
