@@ -22,7 +22,7 @@ jobs:
       image: golang:1.27.1@sha256:512690a5660563b57d37ecc31129e7f136e831db2aed24a1dbeb8ad7380dc0fa
     env:
       MACHINA_GITLAB_REPOSITORY: https://gitlab.com/machina-group/machina.git
-      MACHINA_GITLAB_SOURCE_SHA: 6533878df3ec6a0a6cda84eb60594c0d8c40a06fcb7d3e743969cc1fffb731d7
+      MACHINA_GITLAB_SOURCE_SHA: 8e4dc8fab405c89a0d03e80674e81b3680d14ecabc767c53ab906dd1e83ef60f
 
     steps:
       - name: Trust and exact private checkout
@@ -91,20 +91,22 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-source"
-          pattern='^(TestCollectTrackedEntriesRejectsCombinedUnicodeCaseCollision|TestCollectTrackedEntriesRejectsCaseVariantSecretFilename|TestExportWorkspaceRejectsReservedExecutionMetadataNamespace|TestFinalizeManifestRejectsUnsafeOrNonCanonicalEntries|TestFinalizeManifestRejectsCombinedUnicodeCaseCollision|TestVerifyWorkspaceRejectsExecutionMetadataModeMutation)$'
+          pattern='^(TestCollectTrackedEntriesRejectsCombinedUnicodeCaseCollision|TestCollectTrackedEntriesRejectsCaseVariantSecretFilename|TestCollectTrackedEntriesRejectsWorkingTreeModeMismatch|TestExportWorkspaceRejectsReservedExecutionMetadataNamespace|TestFinalizeManifestRejectsUnsafeOrNonCanonicalEntries|TestFinalizeManifestRejectsCombinedUnicodeCaseCollision|TestVerifyWorkspaceRejectsExecutionMetadataModeMutation|TestVerifyWorkspaceRejectsExecutionMetadataDirectoryModeMutation)$'
           if go test ./tools/contractctl/internal/workspace -run "$pattern" -count=1 >"$RUNNER_TEMP/fos-003-portable-red.log" 2>&1; then
             exit 1
           fi
           grep -q -- '--- FAIL: TestCollectTrackedEntriesRejectsCombinedUnicodeCaseCollision' "$RUNNER_TEMP/fos-003-portable-red.log"
           grep -q -- '--- FAIL: TestCollectTrackedEntriesRejectsCaseVariantSecretFilename' "$RUNNER_TEMP/fos-003-portable-red.log"
+          grep -q -- '--- FAIL: TestCollectTrackedEntriesRejectsWorkingTreeModeMismatch' "$RUNNER_TEMP/fos-003-portable-red.log"
           grep -q -- '--- FAIL: TestExportWorkspaceRejectsReservedExecutionMetadataNamespace' "$RUNNER_TEMP/fos-003-portable-red.log"
           grep -q -- '--- FAIL: TestFinalizeManifestRejectsUnsafeOrNonCanonicalEntries' "$RUNNER_TEMP/fos-003-portable-red.log"
           grep -q -- '--- FAIL: TestFinalizeManifestRejectsCombinedUnicodeCaseCollision' "$RUNNER_TEMP/fos-003-portable-red.log"
           grep -q -- '--- FAIL: TestVerifyWorkspaceRejectsExecutionMetadataModeMutation' "$RUNNER_TEMP/fos-003-portable-red.log"
+          grep -q -- '--- FAIL: TestVerifyWorkspaceRejectsExecutionMetadataDirectoryModeMutation' "$RUNNER_TEMP/fos-003-portable-red.log"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
           git diff --quiet
           git diff --cached --quiet
-          echo "FOS003_PORTABLE_BOUNDARY_RED=PASS expected_failures=6"
+          echo "FOS003_PORTABLE_BOUNDARY_RED=PASS expected_failures=8"
           echo "CLEAN_TREE_AFTER_FOS003_PORTABLE_BOUNDARY_RED=PASS"
 
       - name: Destroy ephemeral private workspace
