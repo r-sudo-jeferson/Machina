@@ -19,6 +19,11 @@
     "pnpm": {
       "version": "12.3.4",
       "source": "pnpm.io"
+    },
+    "sqlc": {
+      "version": "1.31.1",
+      "source": "github.com/sqlc-dev/sqlc/releases",
+      "linuxAmd64ArchiveSha256": "497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354"
     }
   },
   "platformDependencies": {
@@ -29,6 +34,10 @@
     "keycloak": {
       "version": "26.7.3",
       "source": "keycloak.org"
+    },
+    "pgx": {
+      "version": "5.10.0",
+      "source": "github.com/jackc/pgx"
     }
   },
   "webBaseline": {
