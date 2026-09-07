@@ -48,9 +48,7 @@ fn cache_returns_snapshot_only_for_exact_tenant_and_policy_version() {
     cache.insert("tenant-a", valid_snapshot(7));
 
     assert_eq!(
-        cache
-            .get_exact("tenant-a", 7)
-            .map(PolicySnapshot::version),
+        cache.get_exact("tenant-a", 7).map(PolicySnapshot::version),
         Some(7)
     );
     assert!(cache.get_exact("tenant-a", 8).is_none());
