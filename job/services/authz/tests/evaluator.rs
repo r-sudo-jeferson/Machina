@@ -2,6 +2,9 @@ use cedar_policy::{Context, Entities, EntityUid, PolicySet, Request, Schema};
 use machina_authz::evaluator::{DecisionReason, Evaluator};
 use machina_authz::policy_store::PolicySnapshot;
 
+const TEST_SNAPSHOT_HASH: &str =
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
 fn request() -> Request {
     Request::new(
         "User::\"subject-a\""
@@ -54,8 +57,14 @@ fn schema() -> Schema {
 }
 
 fn snapshot(version: u64, policies: PolicySet) -> PolicySnapshot {
-    PolicySnapshot::try_new(version, schema(), policies, Entities::empty())
-        .expect("test policy snapshot must validate")
+    PolicySnapshot::try_new(
+        version,
+        TEST_SNAPSHOT_HASH,
+        schema(),
+        policies,
+        Entities::empty(),
+    )
+    .expect("test policy snapshot must validate")
 }
 
 fn matching_permit_policy() -> PolicySet {
@@ -110,6 +119,10 @@ fn empty_policy_store_denies_fail_closed() {
 
     assert!(!decision.allowed);
     assert_eq!(decision.policy_version, 7);
+    assert_eq!(
+        decision.policy_snapshot_hash.as_deref(),
+        Some(TEST_SNAPSHOT_HASH)
+    );
     assert_eq!(decision.reason_codes, vec![DecisionReason::DefaultDeny]);
     assert!(decision.diagnostic_ref.is_none());
 }
