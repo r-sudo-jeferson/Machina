@@ -1,4 +1,4 @@
-name: Verify FORGE binding
+name: Verify repository contract
 
 on:
   push:
@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: verify-binding-${{ github.ref }}
+  group: verify-repository-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify-binding:
+  verify-repository:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -31,10 +31,37 @@ jobs:
           go-version: '1.27.1'
           cache: false
 
-      - name: Verify module is canonical
+      - name: Verify Go module is canonical
         working-directory: job
         run: go mod tidy -diff
 
-      - name: Verify binding compatibility contract
+      - name: Verify repository policy contracts
         working-directory: job
-        run: go test -count=1 ./scripts/verify/...
+        run: |
+          go test -count=1 ./scripts/verify/...
+          go test -count=1 ./...
+
+      - name: Setup Node 24.20.0 LTS
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.20.0'
+          cache: ''
+
+      - name: Verify pnpm workspace lock
+        working-directory: job
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@12.3.4 --activate
+          test "$(node --version)" = "v24.20.0"
+          test "$(pnpm --version)" = "12.3.4"
+          pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Verify Rust workspace manifest
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --component clippy --component rustfmt
+          rustc +1.98.1 --version
+          cargo +1.98.1 metadata --format-version 1 --no-deps >/dev/null
