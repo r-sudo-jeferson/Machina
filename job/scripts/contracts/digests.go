@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,34 +43,39 @@ func ValidateContractDigests(jobRoot string) error {
 		return fmt.Errorf("digest manifest has %d entries; want %d", len(expected), len(paths))
 	}
 
+	var violations []error
 	for _, rel := range paths {
 		want, ok := expected[rel]
 		if !ok {
-			return fmt.Errorf("digest manifest missing %s", rel)
+			violations = append(violations, fmt.Errorf("digest manifest missing %s", rel))
+			continue
 		}
 		path := filepath.Join(jobRoot, filepath.FromSlash(rel))
 		info, err := os.Lstat(path)
 		if err != nil {
-			return fmt.Errorf("stat %s: %w", rel, err)
+			violations = append(violations, fmt.Errorf("stat %s: %w", rel, err))
+			continue
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("contract %s is not a regular file", rel)
+			violations = append(violations, fmt.Errorf("contract %s is not a regular file", rel))
+			continue
 		}
 		got, err := sha256File(path)
 		if err != nil {
-			return fmt.Errorf("hash %s: %w", rel, err)
+			violations = append(violations, fmt.Errorf("hash %s: %w", rel, err))
+			continue
 		}
 		if got != want {
-			return fmt.Errorf("digest mismatch for %s: got %s want %s", rel, got, want)
+			violations = append(violations, fmt.Errorf("digest mismatch for %s: got %s want %s", rel, got, want))
 		}
 	}
 
 	for rel := range expected {
 		if !slices.Contains(paths, rel) {
-			return fmt.Errorf("digest manifest contains unapproved contract %s", rel)
+			violations = append(violations, fmt.Errorf("digest manifest contains unapproved contract %s", rel))
 		}
 	}
-	return nil
+	return errors.Join(violations...)
 }
 
 func parseContractDigestManifest(r io.Reader) (map[string]string, error) {
