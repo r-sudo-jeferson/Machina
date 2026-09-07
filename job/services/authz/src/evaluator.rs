@@ -3,6 +3,7 @@ use cedar_policy::{Authorizer, Decision as CedarDecision, Entities, PolicySet, R
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecisionReason {
     DefaultDeny,
+    EvaluationError,
     ExplicitForbid,
     StalePolicyVersion,
 }
@@ -58,15 +59,15 @@ impl Evaluator {
         let response =
             Authorizer::new().is_authorized(request, &snapshot.policies, &snapshot.entities);
 
-        // Cedar may continue evaluating other policies after an evaluation
-        // error. Machina therefore never turns a response containing an error
-        // diagnostic into an allow.
+        // Cedar can continue evaluating other policies after an evaluation
+        // error. Machina treats any such uncertainty as a hard deny and only
+        // exposes a stable safe reference, never the raw Cedar diagnostic.
         if response.diagnostics().errors().next().is_some() {
             return Decision {
                 allowed: false,
                 policy_version: snapshot.version,
-                reason_codes: vec![DecisionReason::DefaultDeny],
-                diagnostic_ref: None,
+                reason_codes: vec![DecisionReason::EvaluationError],
+                diagnostic_ref: Some("cedar-evaluation-error".to_owned()),
             };
         }
 
