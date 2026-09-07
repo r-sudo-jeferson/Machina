@@ -18,7 +18,10 @@ fn canonical_decision_messages_preserve_required_authz_fields() {
 
     assert_eq!(request.tenant_id, "tenant-a");
     assert_eq!(request.required_policy_version, 7);
-    assert_eq!(request.context.get("locale").map(String::as_str), Some("pt-BR"));
+    assert_eq!(
+        request.context.get("locale").map(String::as_str),
+        Some("pt-BR")
+    );
 
     let response = DecisionResponse {
         decision_id: "decision-a".to_owned(),
