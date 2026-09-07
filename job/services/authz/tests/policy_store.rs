@@ -40,14 +40,8 @@ fn persisted_starter_fixture_is_valid_cedar() {
         .parse::<PolicySet>()
         .expect("persisted policies");
 
-    PolicySnapshot::try_new(
-        1,
-        TEST_SNAPSHOT_HASH,
-        schema,
-        policies,
-        Entities::empty(),
-    )
-    .expect("persisted starter fixture must validate");
+    PolicySnapshot::try_new(1, TEST_SNAPSHOT_HASH, schema, policies, Entities::empty())
+        .expect("persisted starter fixture must validate");
 }
 
 #[test]
