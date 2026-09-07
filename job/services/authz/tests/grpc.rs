@@ -9,6 +9,8 @@ use machina_authz::proto::DecisionRequest;
 use machina_authz::proto::authorization_service_server::AuthorizationService;
 use tonic::{Code, Request as TonicRequest};
 
+const SNAPSHOT_HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 fn ready<F: Future>(future: F) -> F::Output {
     let waker = Waker::noop();
     let mut context = TaskContext::from_waker(waker);
@@ -52,7 +54,14 @@ fn permit_snapshot(version: u64) -> PolicySnapshot {
     .parse()
     .expect("policy");
 
-    PolicySnapshot::try_new(version, schema(), policies, Entities::empty()).expect("valid snapshot")
+    PolicySnapshot::try_new(
+        version,
+        SNAPSHOT_HASH,
+        schema(),
+        policies,
+        Entities::empty(),
+    )
+    .expect("valid snapshot")
 }
 
 fn request(tenant_id: &str, required_policy_version: u64) -> DecisionRequest {
@@ -90,6 +99,7 @@ fn decide_denies_fail_closed_when_exact_policy_snapshot_is_missing() {
     assert!(!response.allowed);
     assert_eq!(response.policy_version, 0);
     assert_eq!(response.reason_codes, vec!["policy_unavailable"]);
+    assert!(response.policy_snapshot_hash.is_empty());
 }
 
 #[test]
@@ -108,6 +118,7 @@ fn decide_translates_typed_request_context_and_preserves_cedar_allow() {
     assert!(response.allowed);
     assert_eq!(response.policy_version, 7);
     assert!(response.reason_codes.is_empty());
+    assert_eq!(response.policy_snapshot_hash, SNAPSHOT_HASH);
 }
 
 #[test]
