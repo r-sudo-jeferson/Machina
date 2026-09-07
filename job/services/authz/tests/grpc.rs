@@ -6,8 +6,8 @@ use std::task::{Context as TaskContext, Poll, Wake, Waker};
 use cedar_policy::{Entities, PolicySet, Schema};
 use machina_authz::grpc::AuthorizationServiceHandler;
 use machina_authz::policy_store::{PolicyCache, PolicySnapshot};
-use machina_authz::proto::authorization_service_server::AuthorizationService;
 use machina_authz::proto::DecisionRequest;
+use machina_authz::proto::authorization_service_server::AuthorizationService;
 use tonic::{Code, Request as TonicRequest};
 
 struct NoopWake;
