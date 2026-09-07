@@ -54,7 +54,10 @@ jobs:
 
           status="$(git status --porcelain --untracked-files=no)"
           printf '%s\n' "$status"
-          test "$status" = ' M Cargo.lock'
+          case "$status" in
+            ' M Cargo.lock'|' M job/Cargo.lock') ;;
+            *) exit 1 ;;
+          esac
 
       - name: Commit only verified lock update
         run: |
