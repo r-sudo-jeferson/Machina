@@ -57,7 +57,7 @@ impl AuthorizationServiceHandler {
                 .map(str::to_owned)
                 .collect(),
             diagnostic_ref: decision.diagnostic_ref.unwrap_or_default(),
-            policy_snapshot_hash: String::new(),
+            policy_snapshot_hash: decision.policy_snapshot_hash.unwrap_or_default(),
         })
     }
 }
