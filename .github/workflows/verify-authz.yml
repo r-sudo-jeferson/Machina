@@ -8,6 +8,8 @@ on:
       - 'job/Cargo.toml'
       - 'job/Cargo.lock'
       - 'job/services/authz/**'
+      - 'job/db/migrations/**'
+      - 'job/scripts/authztest/**'
       - '.github/workflows/verify-authz.yml'
   pull_request:
     branches:
@@ -16,6 +18,8 @@ on:
       - 'job/Cargo.toml'
       - 'job/Cargo.lock'
       - 'job/services/authz/**'
+      - 'job/db/migrations/**'
+      - 'job/scripts/authztest/**'
       - '.github/workflows/verify-authz.yml'
 
 permissions:
@@ -28,7 +32,7 @@ concurrency:
 jobs:
   authz:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Checkout candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -46,3 +50,7 @@ jobs:
           cargo +1.98.1 fmt --all --check
           cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
           cargo +1.98.1 test --locked --workspace --all-targets
+
+      - name: Verify PostgreSQL-backed policy loading
+        working-directory: job
+        run: bash scripts/authztest/run.sh
