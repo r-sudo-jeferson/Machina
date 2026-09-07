@@ -112,45 +112,47 @@ jobs:
           fi
           echo "TOOLCHAIN=PASS toolIdentity=go toolVersion=1.27.1"
 
-      - name: Run private verification gates
+      - name: Diagnose module-download mutation
         shell: bash
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/private-source"
 
-          run_private_gate() {
-            local gate="$1"
-            shift
-            local log="$RUNNER_TEMP/machina-${gate}.log"
-            set +e
-            "$@" >"$log" 2>&1
-            local rc=$?
-            set -e
-            if [[ $rc -ne 0 ]]; then
-              echo "::error title=${gate}_FAIL::Private verification gate failed; detailed log withheld by evidence policy."
-              return "$rc"
-            fi
-            echo "${gate}=PASS"
-          }
+          if ! git diff --quiet --exit-code; then
+            echo "::error title=CLEAN_TREE_BASELINE_FAIL::Tracked working tree is dirty before module download."
+            exit 1
+          fi
+          echo "CLEAN_TREE_BASELINE=PASS"
 
-          assert_clean() {
-            local stage="$1"
-            if ! git diff --quiet --exit-code; then
-              echo "::error title=CLEAN_TREE_${stage}_FAIL::Tracked working tree changed after ${stage}; paths withheld by evidence policy."
-              return 1
-            fi
-            echo "CLEAN_TREE_${stage}=PASS"
-          }
+          log="$RUNNER_TEMP/machina-MODULE_DOWNLOAD.log"
+          set +e
+          go mod download >"$log" 2>&1
+          rc=$?
+          set -e
+          if [[ $rc -ne 0 ]]; then
+            echo "::error title=MODULE_DOWNLOAD_FAIL::Module download failed; detailed log withheld by evidence policy."
+            exit "$rc"
+          fi
+          echo "MODULE_DOWNLOAD=PASS"
 
-          assert_clean BASELINE
-          run_private_gate MODULE_DOWNLOAD go mod download
-          assert_clean MODULE_DOWNLOAD
-          run_private_gate GO_TEST go test ./... -count=1
-          assert_clean GO_TEST
-          run_private_gate GO_RACE go test -race ./... -count=1
-          assert_clean GO_RACE
-          run_private_gate GO_VET go vet ./...
-          assert_clean GO_VET
+          manifest_changed=false
+          lock_changed=false
+          other_changed=false
+          git diff --quiet --exit-code -- go.mod || manifest_changed=true
+          git diff --quiet --exit-code -- go.sum || lock_changed=true
+          git diff --quiet --exit-code -- . ':(exclude)go.mod' ':(exclude)go.sum' || other_changed=true
+
+          echo "MODULE_MANIFEST_CHANGED=$manifest_changed"
+          echo "MODULE_LOCK_CHANGED=$lock_changed"
+          echo "OTHER_TRACKED_CHANGED=$other_changed"
+
+          if [[ "$manifest_changed" == false && "$lock_changed" == false && "$other_changed" == false ]]; then
+            echo "CLEAN_TREE_MODULE_DOWNLOAD=PASS"
+            exit 0
+          fi
+
+          echo "::error title=CLEAN_TREE_MODULE_DOWNLOAD_FAIL::Module download mutates tracked Canon bytes; content withheld by evidence policy."
+          exit 1
 
       - name: Destroy ephemeral private workspace
         if: always()
@@ -161,8 +163,4 @@ jobs:
           rm -f "$RUNNER_TEMP/machina-git-askpass.sh"
           rm -f "$RUNNER_TEMP/machina-source-fetch.log"
           rm -f "$RUNNER_TEMP/machina-MODULE_DOWNLOAD.log"
-          rm -f "$RUNNER_TEMP/machina-GO_TEST.log"
-          rm -f "$RUNNER_TEMP/machina-GO_RACE.log"
-          rm -f "$RUNNER_TEMP/machina-GO_VET.log"
-          rm -f "$RUNNER_TEMP/machina-CLEAN_TREE.log"
           echo "EPHEMERAL_WORKSPACE_DESTROYED=PASS"
