@@ -2,6 +2,8 @@ use cedar_policy::{Entities, PolicySet, Schema};
 use machina_authz::policy_store::{PolicyCache, PolicyLoadError, PolicySnapshot};
 
 const TEST_SNAPSHOT_HASH: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const PERSISTED_SCHEMA_JSON: &str = include_str!("fixtures/starter-schema.json");
+const PERSISTED_POLICIES: &str = include_str!("fixtures/starter.cedar");
 
 fn schema() -> Schema {
     let (schema, warnings) = Schema::from_cedarschema_str(
@@ -29,6 +31,23 @@ fn valid_snapshot(version: u64) -> PolicySnapshot {
         Entities::empty(),
     )
     .expect("valid snapshot")
+}
+
+#[test]
+fn persisted_starter_fixture_is_valid_cedar() {
+    let schema = Schema::from_json_str(PERSISTED_SCHEMA_JSON).expect("persisted JSON schema");
+    let policies = PERSISTED_POLICIES
+        .parse::<PolicySet>()
+        .expect("persisted policies");
+
+    PolicySnapshot::try_new(
+        1,
+        TEST_SNAPSHOT_HASH,
+        schema,
+        policies,
+        Entities::empty(),
+    )
+    .expect("persisted starter fixture must validate");
 }
 
 #[test]
