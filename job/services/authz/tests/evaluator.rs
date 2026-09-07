@@ -2,8 +2,7 @@ use cedar_policy::{Context, Entities, EntityUid, PolicySet, Request, Schema};
 use machina_authz::evaluator::{DecisionReason, Evaluator};
 use machina_authz::policy_store::PolicySnapshot;
 
-const TEST_SNAPSHOT_HASH: &str =
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const TEST_SNAPSHOT_HASH: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn request() -> Request {
     Request::new(
