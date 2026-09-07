@@ -68,7 +68,10 @@ fn await_http_status(addr: SocketAddr, path: &str, expected: u16) {
 fn terminate(mut child: Child) {
     child.kill().expect("terminate authz process");
     let status = child.wait().expect("reap authz process");
-    assert!(!status.success(), "forced termination must not report success");
+    assert!(
+        !status.success(),
+        "forced termination must not report success"
+    );
 }
 
 #[test]
