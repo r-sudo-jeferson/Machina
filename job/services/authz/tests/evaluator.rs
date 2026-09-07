@@ -33,9 +33,9 @@ fn stale_policy_version_denies_before_evaluation() {
     let evaluator = Evaluator::new();
     let policies: PolicySet = r#"
         permit(
-            principal == User::\"subject-a\",
-            action == Action::\"context.read\",
-            resource == PlatformContext::\"active\"
+            principal == User::"subject-a",
+            action == Action::"context.read",
+            resource == PlatformContext::"active"
         );
     "#
     .parse()
