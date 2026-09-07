@@ -973,6 +973,7 @@ dependencies = [
  "cedar-policy",
  "prost",
  "protoc-bin-vendored",
+ "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
