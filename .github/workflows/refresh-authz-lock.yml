@@ -1,0 +1,56 @@
+name: Refresh authz lock temporary
+
+on:
+  push:
+    branches:
+      - forge/mch-s001-1.0.0
+    paths:
+      - 'job/services/authz/Cargo.toml'
+      - '.github/workflows/refresh-authz-lock.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-authz-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout construction branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: forge/mch-s001-1.0.0
+          fetch-depth: 1
+
+      - name: Refresh lock minimally and verify exact diff
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1
+          cargo +1.98.1 metadata --format-version 1 >/dev/null
+          cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
+
+          read -r added deleted path <<<"$(git diff --numstat -- Cargo.lock)"
+          test "$path" = "Cargo.lock"
+          test "$added" = "2"
+          test "$deleted" = "0"
+
+          diff="$(git diff -- Cargo.lock)"
+          printf '%s\n' "$diff"
+          printf '%s\n' "$diff" | grep -F '+ "axum",'
+          printf '%s\n' "$diff" | grep -F '+ "tokio",'
+
+      - name: Commit only verified lock update
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no | grep -v '^ M job/Cargo.lock$' || true)"
+          git config user.name 'forge-engineering'
+          git config user.email 'forge-engineering@users.noreply.github.com'
+          git add job/Cargo.lock
+          git commit -m 'build(authz): refresh locked runtime dependencies'
+          git push origin HEAD:forge/mch-s001-1.0.0
