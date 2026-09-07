@@ -12,15 +12,16 @@ import (
 	"github.com/bufbuild/protocompile"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const (
-	openAPIPath        = "contracts/openapi/platform.yaml"
-	authzProtoPath     = "contracts/proto/authz/v1/authz.proto"
-	contextInputPath   = "contracts/ai/context-tool.schema.json"
-	contextResultPath  = "contracts/ai/context-tool.result.schema.json"
-	eventEnvelopePath  = "contracts/events/v1/envelope.schema.json"
-	coreManifestPath   = "contracts/modules/core.manifest.json"
+	openAPIPath       = "contracts/openapi/platform.yaml"
+	authzProtoPath    = "contracts/proto/authz/v1/authz.proto"
+	contextInputPath  = "contracts/ai/context-tool.schema.json"
+	contextResultPath = "contracts/ai/context-tool.result.schema.json"
+	eventEnvelopePath = "contracts/events/v1/envelope.schema.json"
+	coreManifestPath  = "contracts/modules/core.manifest.json"
 )
 
 func ValidateAll(jobRoot string) error {
@@ -201,7 +202,7 @@ func validateAuthzProto(protoRoot string) error {
 		"required_policy_version",
 		"correlation_id",
 	} {
-		if request.Fields().ByName(field) == nil {
+		if request.Fields().ByName(protoreflect.Name(field)) == nil {
 			return fmt.Errorf("DecisionRequest.%s is required", field)
 		}
 	}
@@ -218,7 +219,7 @@ func validateAuthzProto(protoRoot string) error {
 		"diagnostic_ref",
 		"policy_snapshot_hash",
 	} {
-		if response.Fields().ByName(field) == nil {
+		if response.Fields().ByName(protoreflect.Name(field)) == nil {
 			return fmt.Errorf("DecisionResponse.%s is required", field)
 		}
 	}
