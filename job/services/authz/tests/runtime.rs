@@ -28,5 +28,8 @@ fn readiness_starts_fail_closed_and_is_explicitly_reversible() {
     state.mark_ready();
     assert!(state.is_ready());
     state.mark_not_ready();
-    assert!(!state.is_ready(), "dependency/runtime failure must withdraw readiness");
+    assert!(
+        !state.is_ready(),
+        "dependency/runtime failure must withdraw readiness"
+    );
 }
