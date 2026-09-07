@@ -119,8 +119,6 @@ pub async fn serve(
     probes: ProbeState,
     shutdown: watch::Receiver<bool>,
 ) -> Result<(), RuntimeServeError> {
-    probes.mark_not_ready();
-
     let probe_listener = TcpListener::bind(config.probe_addr())
         .await
         .map_err(RuntimeServeError::ProbeBind)?;

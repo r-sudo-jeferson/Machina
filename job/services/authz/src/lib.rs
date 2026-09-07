@@ -1,5 +1,6 @@
 pub mod evaluator;
 pub mod grpc;
+pub mod policy_source;
 pub mod policy_store;
 pub mod runtime;
 pub mod service;

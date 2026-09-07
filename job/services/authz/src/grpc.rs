@@ -5,6 +5,7 @@ use cedar_policy::{Context, EntityId, EntityTypeName, EntityUid, Request, Restri
 use tonic::{Request as TonicRequest, Response as TonicResponse, Status};
 
 use crate::evaluator::DecisionReason;
+use crate::policy_source::PostgresPolicySource;
 use crate::policy_store::PolicyCache;
 use crate::proto::authorization_service_server::AuthorizationService;
 use crate::proto::{DecisionRequest, DecisionResponse};
@@ -15,10 +16,16 @@ const ACTION_TYPE: &str = "Action";
 const INVALID_REQUEST_MESSAGE: &str = "invalid authorization request";
 const AUTHZ_STATE_UNAVAILABLE_MESSAGE: &str = "authorization state unavailable";
 
-#[derive(Debug, Default)]
 pub struct AuthorizationServiceHandler {
     engine: AuthorizationEngine,
     cache: RwLock<PolicyCache>,
+    policy_source: Option<PostgresPolicySource>,
+}
+
+impl Default for AuthorizationServiceHandler {
+    fn default() -> Self {
+        Self::new(PolicyCache::new())
+    }
 }
 
 impl AuthorizationServiceHandler {
@@ -26,12 +33,65 @@ impl AuthorizationServiceHandler {
         Self {
             engine: AuthorizationEngine::new(),
             cache: RwLock::new(cache),
+            policy_source: None,
         }
     }
 
-    fn decide_message(&self, message: DecisionRequest) -> Result<DecisionResponse, Status> {
+    pub fn with_policy_source(cache: PolicyCache, policy_source: PostgresPolicySource) -> Self {
+        Self {
+            engine: AuthorizationEngine::new(),
+            cache: RwLock::new(cache),
+            policy_source: Some(policy_source),
+        }
+    }
+
+    async fn refresh_policy_if_needed(
+        &self,
+        tenant_id: &str,
+        required_policy_version: u64,
+    ) -> Result<(), Status> {
+        let Some(source) = &self.policy_source else {
+            return Ok(());
+        };
+
+        if !source.is_healthy() {
+            self.cache
+                .write()
+                .map_err(|_| Status::unavailable(AUTHZ_STATE_UNAVAILABLE_MESSAGE))?
+                .invalidate(tenant_id);
+            return Ok(());
+        }
+
+        let exact_snapshot_is_cached = self
+            .cache
+            .read()
+            .map_err(|_| Status::unavailable(AUTHZ_STATE_UNAVAILABLE_MESSAGE))?
+            .get_exact(tenant_id, required_policy_version)
+            .is_some();
+        if exact_snapshot_is_cached {
+            return Ok(());
+        }
+
+        let loaded = source.load_active(tenant_id).await;
+        let mut cache = self
+            .cache
+            .write()
+            .map_err(|_| Status::unavailable(AUTHZ_STATE_UNAVAILABLE_MESSAGE))?;
+        match loaded {
+            Ok(Some(snapshot)) => cache.insert(tenant_id, snapshot),
+            Ok(None) | Err(_) => {
+                cache.invalidate(tenant_id);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn decide_message(&self, message: DecisionRequest) -> Result<DecisionResponse, Status> {
         validate_message(&message)?;
         let request = cedar_request(&message)?;
+        self.refresh_policy_if_needed(&message.tenant_id, message.required_policy_version)
+            .await?;
         let input = DecisionInput::new(
             message.tenant_id.clone(),
             message.required_policy_version,
@@ -69,6 +129,7 @@ impl AuthorizationService for AuthorizationServiceHandler {
         request: TonicRequest<DecisionRequest>,
     ) -> Result<TonicResponse<DecisionResponse>, Status> {
         self.decide_message(request.into_inner())
+            .await
             .map(TonicResponse::new)
     }
 }

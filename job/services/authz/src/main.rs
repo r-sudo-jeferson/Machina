@@ -5,6 +5,7 @@ use std::io;
 use std::process::ExitCode;
 
 use machina_authz::grpc::AuthorizationServiceHandler;
+use machina_authz::policy_source::{PolicySourceError, PostgresPolicySource};
 use machina_authz::policy_store::PolicyCache;
 use machina_authz::runtime::{
     ProbeState, RuntimeConfig, RuntimeConfigError, RuntimeServeError, serve,
@@ -13,13 +14,16 @@ use tokio::sync::watch;
 
 const GRPC_ENV: &str = "MACHINA_AUTHZ_GRPC_ADDR";
 const PROBE_ENV: &str = "MACHINA_AUTHZ_PROBE_ADDR";
+const DATABASE_ENV: &str = "MACHINA_AUTHZ_DATABASE_URL";
 const CONFIG_ERROR_EXIT_CODE: u8 = 78;
 const RUNTIME_ERROR_EXIT_CODE: u8 = 70;
 
 #[derive(Debug)]
 enum StartupError {
     MissingEnvironment(&'static str),
+    InvalidEnvironment(&'static str),
     InvalidRuntimeConfig(RuntimeConfigError),
+    PolicySource(PolicySourceError),
     Signal(io::Error),
     Runtime(RuntimeServeError),
 }
@@ -27,8 +31,10 @@ enum StartupError {
 impl StartupError {
     fn exit_code(&self) -> u8 {
         match self {
-            Self::MissingEnvironment(_) | Self::InvalidRuntimeConfig(_) => CONFIG_ERROR_EXIT_CODE,
-            Self::Signal(_) | Self::Runtime(_) => RUNTIME_ERROR_EXIT_CODE,
+            Self::MissingEnvironment(_)
+            | Self::InvalidEnvironment(_)
+            | Self::InvalidRuntimeConfig(_) => CONFIG_ERROR_EXIT_CODE,
+            Self::PolicySource(_) | Self::Signal(_) | Self::Runtime(_) => RUNTIME_ERROR_EXIT_CODE,
         }
     }
 }
@@ -39,6 +45,9 @@ impl fmt::Display for StartupError {
             Self::MissingEnvironment(name) => {
                 write!(formatter, "missing required environment variable {name}")
             }
+            Self::InvalidEnvironment(name) => {
+                write!(formatter, "environment variable {name} is invalid")
+            }
             Self::InvalidRuntimeConfig(RuntimeConfigError::InvalidAddress) => {
                 formatter.write_str("listener addresses must be valid socket addresses")
             }
@@ -48,6 +57,7 @@ impl fmt::Display for StartupError {
             Self::InvalidRuntimeConfig(RuntimeConfigError::ZeroPort) => {
                 formatter.write_str("listener ports must be non-zero")
             }
+            Self::PolicySource(error) => write!(formatter, "authorization policy source failed: {error}"),
             Self::Signal(_) => {
                 formatter.write_str("failed to register process termination signal handler")
             }
@@ -59,15 +69,27 @@ impl fmt::Display for StartupError {
 impl Error for StartupError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::PolicySource(error) => Some(error),
             Self::Signal(error) => Some(error),
             Self::Runtime(error) => Some(error),
-            Self::MissingEnvironment(_) | Self::InvalidRuntimeConfig(_) => None,
+            Self::MissingEnvironment(_)
+            | Self::InvalidEnvironment(_)
+            | Self::InvalidRuntimeConfig(_) => None,
         }
     }
 }
 
 fn required_environment(name: &'static str) -> Result<String, StartupError> {
     env::var(name).map_err(|_| StartupError::MissingEnvironment(name))
+}
+
+fn optional_environment(name: &'static str) -> Result<Option<String>, StartupError> {
+    match env::var(name) {
+        Ok(value) if !value.is_empty() => Ok(Some(value)),
+        Ok(_) => Err(StartupError::InvalidEnvironment(name)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err(StartupError::InvalidEnvironment(name)),
+    }
 }
 
 #[cfg(unix)]
@@ -94,8 +116,18 @@ async fn run() -> Result<(), StartupError> {
     let config = RuntimeConfig::parse(&grpc_addr, &probe_addr)
         .map_err(StartupError::InvalidRuntimeConfig)?;
 
-    let handler = AuthorizationServiceHandler::new(PolicyCache::new());
     let probes = ProbeState::new();
+    let handler = match optional_environment(DATABASE_ENV)? {
+        Some(database_url) => {
+            let source = PostgresPolicySource::connect(&database_url, probes.clone())
+                .await
+                .map_err(StartupError::PolicySource)?;
+            probes.mark_ready();
+            AuthorizationServiceHandler::with_policy_source(PolicyCache::new(), source)
+        }
+        None => AuthorizationServiceHandler::new(PolicyCache::new()),
+    };
+
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let runtime = serve(config, handler, probes, shutdown_rx);
     tokio::pin!(runtime);
