@@ -1,8 +1,5 @@
-#[path = "../src/policy_store.rs"]
-mod policy_store;
-
 use cedar_policy::{Entities, PolicySet, Schema};
-use policy_store::{PolicyLoadError, PolicySnapshot};
+use machina_authz::policy_store::{PolicyLoadError, PolicySnapshot};
 
 fn schema() -> Schema {
     let (schema, warnings) = Schema::from_cedarschema_str(
