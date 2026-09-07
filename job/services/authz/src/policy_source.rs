@@ -172,8 +172,8 @@ impl PostgresPolicySource {
             .query_opt(
                 "SELECT version, snapshot_hash, cedar_schema::text, cedar_policies \
                  FROM authz.policy_snapshots \
-                 WHERE tenant_id = $1::uuid AND status = 'active'",
-                &[&tenant_id],
+                 WHERE tenant_id = ops.current_tenant_id() AND status = 'active'",
+                &[],
             )
             .await
             .map_err(|_| PolicySourceError::QueryFailed)?;
