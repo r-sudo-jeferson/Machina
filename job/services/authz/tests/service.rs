@@ -48,8 +48,7 @@ fn permit_snapshot(version: u64) -> PolicySnapshot {
     .parse()
     .expect("policy");
 
-    PolicySnapshot::try_new(version, schema(), policies, Entities::empty())
-        .expect("valid snapshot")
+    PolicySnapshot::try_new(version, schema(), policies, Entities::empty()).expect("valid snapshot")
 }
 
 #[test]
@@ -62,7 +61,10 @@ fn missing_policy_snapshot_denies_fail_closed() {
 
     assert!(!decision.allowed);
     assert_eq!(decision.policy_version, 0);
-    assert_eq!(decision.reason_codes, vec![DecisionReason::PolicyUnavailable]);
+    assert_eq!(
+        decision.reason_codes,
+        vec![DecisionReason::PolicyUnavailable]
+    );
     assert!(decision.diagnostic_ref.is_none());
 }
 
@@ -91,5 +93,8 @@ fn another_tenants_snapshot_is_never_used_as_fallback() {
 
     assert!(!decision.allowed);
     assert_eq!(decision.policy_version, 0);
-    assert_eq!(decision.reason_codes, vec![DecisionReason::PolicyUnavailable]);
+    assert_eq!(
+        decision.reason_codes,
+        vec![DecisionReason::PolicyUnavailable]
+    );
 }
