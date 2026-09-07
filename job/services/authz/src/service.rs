@@ -35,8 +35,7 @@ impl AuthorizationEngine {
     }
 
     pub fn decide(&self, cache: &PolicyCache, input: &DecisionInput) -> Decision {
-        let Some(snapshot) = cache.get_exact(&input.tenant_id, input.required_policy_version)
-        else {
+        let Some(snapshot) = cache.get(&input.tenant_id) else {
             return Decision {
                 allowed: false,
                 policy_version: 0,
