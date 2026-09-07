@@ -65,7 +65,7 @@ jobs:
           test "$(pnpm --version)" = "12.3.4"
           pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Verify Rust workspace manifest
+      - name: Verify Rust authorization workspace
         working-directory: job
         run: |
           set -euo pipefail
@@ -73,3 +73,4 @@ jobs:
           rustup toolchain install 1.98.1 --component clippy --component rustfmt
           rustc +1.98.1 --version
           cargo +1.98.1 metadata --format-version 1 --no-deps >/dev/null
+          cargo +1.98.1 test --workspace --all-targets
