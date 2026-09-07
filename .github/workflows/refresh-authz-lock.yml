@@ -35,8 +35,13 @@ jobs:
           cargo +1.98.1 metadata --format-version 1 >/dev/null
           cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
 
-          read -r added deleted path <<<"$(git diff --numstat -- Cargo.lock)"
-          test "$path" = "Cargo.lock"
+          numstat="$(git diff --numstat -- Cargo.lock)"
+          printf '%s\n' "$numstat"
+          read -r added deleted path <<<"$numstat"
+          case "$path" in
+            Cargo.lock|job/Cargo.lock) ;;
+            *) exit 1 ;;
+          esac
           test "$added" = "1"
           test "$deleted" = "0"
 
