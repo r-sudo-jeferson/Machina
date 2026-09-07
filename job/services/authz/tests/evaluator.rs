@@ -33,6 +33,23 @@ fn matching_permit_policy() -> PolicySet {
     .expect("policy")
 }
 
+fn matching_permit_and_forbid_policy() -> PolicySet {
+    r#"
+        permit(
+            principal == User::"subject-a",
+            action == Action::"context.read",
+            resource == PlatformContext::"active"
+        );
+        forbid(
+            principal == User::"subject-a",
+            action == Action::"context.read",
+            resource == PlatformContext::"active"
+        );
+    "#
+    .parse()
+    .expect("policies")
+}
+
 #[test]
 fn empty_policy_store_denies_fail_closed() {
     let evaluator = Evaluator::new();
@@ -71,5 +88,18 @@ fn matching_permit_policy_allows() {
 
     assert!(decision.allowed, "matching permit must allow");
     assert_eq!(decision.policy_version, 7);
+    assert!(decision.diagnostic_ref.is_none());
+}
+
+#[test]
+fn matching_forbid_overrides_matching_permit() {
+    let evaluator = Evaluator::new();
+    let snapshot = VersionedPolicySet::new(7, matching_permit_and_forbid_policy(), Entities::empty());
+
+    let decision = evaluator.decide(&request(), 7, &snapshot);
+
+    assert!(!decision.allowed, "matching forbid must override permit");
+    assert_eq!(decision.policy_version, 7);
+    assert_eq!(decision.reason_codes, vec![DecisionReason::ExplicitForbid]);
     assert!(decision.diagnostic_ref.is_none());
 }
