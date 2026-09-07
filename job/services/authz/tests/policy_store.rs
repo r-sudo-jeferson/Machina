@@ -1,6 +1,9 @@
 use cedar_policy::{Entities, PolicySet, Schema};
 use machina_authz::policy_store::{PolicyCache, PolicyLoadError, PolicySnapshot};
 
+const TEST_SNAPSHOT_HASH: &str =
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
 fn schema() -> Schema {
     let (schema, warnings) = Schema::from_cedarschema_str(
         r#"
@@ -19,8 +22,27 @@ fn schema() -> Schema {
 }
 
 fn valid_snapshot(version: u64) -> PolicySnapshot {
-    PolicySnapshot::try_new(version, schema(), PolicySet::new(), Entities::empty())
-        .expect("valid snapshot")
+    PolicySnapshot::try_new(
+        version,
+        TEST_SNAPSHOT_HASH,
+        schema(),
+        PolicySet::new(),
+        Entities::empty(),
+    )
+    .expect("valid snapshot")
+}
+
+#[test]
+fn malformed_snapshot_hash_is_rejected_before_policy_load() {
+    let result = PolicySnapshot::try_new(
+        7,
+        "not-a-sha256",
+        schema(),
+        PolicySet::new(),
+        Entities::empty(),
+    );
+
+    assert!(matches!(result, Err(PolicyLoadError::InvalidSnapshotHash)));
 }
 
 #[test]
@@ -37,7 +59,13 @@ fn policy_with_unknown_principal_attribute_is_rejected_strictly() {
     .parse()
     .expect("policy syntax");
 
-    let result = PolicySnapshot::try_new(7, schema(), policies, Entities::empty());
+    let result = PolicySnapshot::try_new(
+        7,
+        TEST_SNAPSHOT_HASH,
+        schema(),
+        policies,
+        Entities::empty(),
+    );
 
     assert!(matches!(result, Err(PolicyLoadError::ValidationFailed)));
 }
