@@ -3,6 +3,9 @@ use machina_authz::evaluator::DecisionReason;
 use machina_authz::policy_store::{PolicyCache, PolicySnapshot};
 use machina_authz::service::{AuthorizationEngine, DecisionInput};
 
+const TEST_SNAPSHOT_HASH: &str =
+    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
 fn cedar_request() -> Request {
     Request::new(
         "User::\"subject-a\""
@@ -48,7 +51,14 @@ fn permit_snapshot(version: u64) -> PolicySnapshot {
     .parse()
     .expect("policy");
 
-    PolicySnapshot::try_new(version, schema(), policies, Entities::empty()).expect("valid snapshot")
+    PolicySnapshot::try_new(
+        version,
+        TEST_SNAPSHOT_HASH,
+        schema(),
+        policies,
+        Entities::empty(),
+    )
+    .expect("valid snapshot")
 }
 
 #[test]
@@ -61,6 +71,7 @@ fn missing_policy_snapshot_denies_fail_closed() {
 
     assert!(!decision.allowed);
     assert_eq!(decision.policy_version, 0);
+    assert!(decision.policy_snapshot_hash.is_none());
     assert_eq!(
         decision.reason_codes,
         vec![DecisionReason::PolicyUnavailable]
@@ -79,6 +90,10 @@ fn exact_tenant_and_policy_snapshot_delegates_to_cedar() {
 
     assert!(decision.allowed);
     assert_eq!(decision.policy_version, 7);
+    assert_eq!(
+        decision.policy_snapshot_hash.as_deref(),
+        Some(TEST_SNAPSHOT_HASH)
+    );
     assert!(decision.reason_codes.is_empty());
 }
 
@@ -93,6 +108,7 @@ fn another_tenants_snapshot_is_never_used_as_fallback() {
 
     assert!(!decision.allowed);
     assert_eq!(decision.policy_version, 0);
+    assert!(decision.policy_snapshot_hash.is_none());
     assert_eq!(
         decision.reason_codes,
         vec![DecisionReason::PolicyUnavailable]
