@@ -25,6 +25,9 @@ const (
 )
 
 func ValidateAll(jobRoot string) error {
+	if err := ValidateContractDigests(jobRoot); err != nil {
+		return fmt.Errorf("contract digest validation: %w", err)
+	}
 	if err := validateOpenAPI(filepath.Join(jobRoot, openAPIPath)); err != nil {
 		return fmt.Errorf("OpenAPI contract: %w", err)
 	}
