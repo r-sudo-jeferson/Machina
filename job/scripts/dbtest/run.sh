@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly POSTGRES_IMAGE='postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af'
+readonly DB_NAME='machina_test'
+readonly MIGRATOR_ROLE='machina_migrator'
+readonly RUNTIME_ROLE='machina_runtime'
+readonly TENANT_A='00000000-0000-0000-0000-0000000000a1'
+readonly TENANT_B='00000000-0000-0000-0000-0000000000b2'
+readonly SUBJECT_A='10000000-0000-0000-0000-0000000000a1'
+readonly SUBJECT_B='10000000-0000-0000-0000-0000000000b2'
+readonly WORKSPACE_A='20000000-0000-0000-0000-0000000000a1'
+readonly WORKSPACE_B='20000000-0000-0000-0000-0000000000b2'
+readonly CONTAINER="machina-pg-${GITHUB_RUN_ID:-local}-$$"
+
+readonly MIGRATIONS=(
+  db/migrations/0001_schemas.sql
+  db/migrations/0002_identity_tenancy.sql
+  db/migrations/0003_authorization.sql
+  db/migrations/0004_audit_outbox.sql
+  db/migrations/0005_ai.sql
+  db/migrations/0006_rls.sql
+  db/migrations/0007_integrity.sql
+)
+
+fail() {
+  printf 'dbtest: %s\n' "$*" >&2
+  exit 1
+}
+
+cleanup() {
+  docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+for migration in "${MIGRATIONS[@]}"; do
+  [[ -f "$migration" ]] || fail "required migration is missing: $migration"
+done
+
+docker run --detach --rm \
+  --name "$CONTAINER" \
+  --network none \
+  --env POSTGRES_HOST_AUTH_METHOD=trust \
+  "$POSTGRES_IMAGE" >/dev/null
+
+for _ in $(seq 1 60); do
+  if docker exec "$CONTAINER" pg_isready -q -U postgres -d postgres; then
+    break
+  fi
+  sleep 1
+done
+docker exec "$CONTAINER" pg_isready -q -U postgres -d postgres || fail 'PostgreSQL did not become ready'
+
+actual_version="$(docker exec "$CONTAINER" psql -XAtq -U postgres -d postgres -c 'SHOW server_version')"
+[[ "$actual_version" == '18.6' ]] || fail "unexpected PostgreSQL version: $actual_version"
+
+docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
+CREATE ROLE ${MIGRATOR_ROLE} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+CREATE ROLE ${RUNTIME_ROLE} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+CREATE DATABASE ${DB_NAME} OWNER ${MIGRATOR_ROLE};
+SQL
+
+for migration in "${MIGRATIONS[@]}"; do
+  docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$MIGRATOR_ROLE" -d "$DB_NAME" < "$migration"
+done
+
+query_as() {
+  local role="$1"
+  local sql="$2"
+  docker exec "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$role" -d "$DB_NAME" -c "$sql"
+}
+
+expect_equals() {
+  local want="$1"
+  local got="$2"
+  local message="$3"
+  [[ "$got" == "$want" ]] || fail "$message: got '$got', want '$want'"
+}
+
+expect_failure() {
+  local role="$1"
+  local sql="$2"
+  local message="$3"
+  if query_as "$role" "$sql" >/dev/null 2>&1; then
+    fail "$message: statement unexpectedly succeeded"
+  fi
+}
+
+role_flags="$(query_as postgres "SELECT rolsuper::int || ':' || rolbypassrls::int || ':' || rolcreatedb::int || ':' || rolcreaterole::int FROM pg_roles WHERE rolname = '${RUNTIME_ROLE}'")"
+expect_equals '0:0:0:0' "$role_flags" 'runtime role has elevated PostgreSQL capabilities'
+
+owner_violations="$(query_as postgres "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_roles r ON r.oid=c.relowner WHERE c.relkind='r' AND n.nspname IN ('iam','authz','audit','ops','ai') AND r.rolname <> '${MIGRATOR_ROLE}'")"
+expect_equals '0' "$owner_violations" 'Slice tables are not owned exclusively by migration role'
+
+rls_violations="$(query_as postgres "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname IN ('iam','authz','audit','ops','ai') AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity) AND (n.nspname,c.relname) NOT IN (('iam','subjects'),('iam','sessions'))")"
+expect_equals '0' "$rls_violations" 'tenant tables are missing ENABLE/FORCE ROW LEVEL SECURITY'
+
+docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$DB_NAME" <<SQL
+INSERT INTO iam.subjects (id, external_subject, display_name) VALUES
+  ('${SUBJECT_A}', 'oidc-a', 'Subject A'),
+  ('${SUBJECT_B}', 'oidc-b', 'Subject B');
+INSERT INTO iam.tenants (id, slug, display_name, status) VALUES
+  ('${TENANT_A}', 'same-slug', 'Same Tenant Name', 'active'),
+  ('${TENANT_B}', 'same-slug', 'Same Tenant Name', 'active');
+INSERT INTO iam.workspaces (tenant_id, id, slug, display_name) VALUES
+  ('${TENANT_A}', '${WORKSPACE_A}', 'main', 'Main'),
+  ('${TENANT_B}', '${WORKSPACE_B}', 'main', 'Main');
+INSERT INTO iam.memberships (tenant_id, subject_id, starter_role, status) VALUES
+  ('${TENANT_A}', '${SUBJECT_A}', 'owner', 'active'),
+  ('${TENANT_B}', '${SUBJECT_B}', 'owner', 'active');
+SQL
+
+missing_context_count="$(query_as "$RUNTIME_ROLE" 'SELECT count(*) FROM iam.workspaces')"
+expect_equals '0' "$missing_context_count" 'runtime without tenant context observed tenant rows'
+expect_failure "$RUNTIME_ROLE" "INSERT INTO iam.workspaces (tenant_id,id,slug,display_name) VALUES ('${TENANT_A}','20000000-0000-0000-0000-0000000000ff','blocked','Blocked')" 'runtime without tenant context mutated tenant data'
+
+tenant_a_count="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_A}',true); SELECT count(*) FROM iam.workspaces; COMMIT;" | tail -n 1)"
+expect_equals '1' "$tenant_a_count" 'tenant A context did not isolate workspace reads'
+
+tenant_b_count="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_B}',true); SELECT count(*) FROM iam.workspaces; COMMIT;" | tail -n 1)"
+expect_equals '1' "$tenant_b_count" 'tenant B context did not isolate workspace reads'
+
+expect_failure "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_A}',true); INSERT INTO iam.workspaces (tenant_id,id,slug,display_name) VALUES ('${TENANT_B}','20000000-0000-0000-0000-0000000000ee','cross','Cross'); COMMIT;" 'tenant A context wrote tenant B data'
+
+pool_reset="$(docker exec -i "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$RUNTIME_ROLE" -d "$DB_NAME" <<SQL
+BEGIN;
+SELECT set_config('app.tenant_id','${TENANT_A}',true);
+SELECT count(*) FROM iam.workspaces;
+COMMIT;
+BEGIN;
+SELECT coalesce(current_setting('app.tenant_id', true), '<null>');
+SELECT count(*) FROM iam.workspaces;
+COMMIT;
+SQL
+)"
+mapfile -t pool_lines <<< "$pool_reset"
+[[ "${pool_lines[*]}" == *"${TENANT_A}"* ]] || fail 'transaction-local tenant context was never established'
+[[ "${pool_lines[*]}" == *'<null>'* || "${pool_lines[*]}" == *" 0 "* || "${pool_lines[*]}" == *'0' ]] || fail 'transaction-local tenant context did not clear after commit'
+expect_equals '0' "${pool_lines[-1]}" 'same backend connection leaked previous tenant rows after commit'
+
+printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
