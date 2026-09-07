@@ -1,66 +1,48 @@
-name: Import Rust lockfile
+name: Verify Rust authorization
 
 on:
   push:
     branches:
       - forge/mch-s001-1.0.0
     paths:
+      - 'job/Cargo.toml'
+      - 'job/Cargo.lock'
+      - 'job/services/authz/**'
+      - '.github/workflows/verify-authz.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'job/Cargo.toml'
+      - 'job/Cargo.lock'
+      - 'job/services/authz/**'
       - '.github/workflows/verify-authz.yml'
 
 permissions:
-  actions: read
-  contents: write
+  contents: read
 
 concurrency:
-  group: import-authz-lock-${{ github.ref }}
+  group: verify-authz-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  import-lock:
-    if: github.repository == 'r-sudo-jeferson/Machina' && github.ref == 'refs/heads/forge/mch-s001-1.0.0'
+  authz:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Import exact captured Cargo.lock
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA256: 6468511c08dc21416c3d3bae227209785befdc7671154b11f9a76fa83d573f4b
-          ARTIFACT_ID: '10030662619'
+      - name: Checkout candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify locked Rust 1.98.1 authorization service
+        working-directory: job
         run: |
           set -euo pipefail
-          curl --fail-with-body --location \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
-            --output /tmp/cargo-lock.zip
-          unzip -p /tmp/cargo-lock.zip Cargo.lock > /tmp/Cargo.lock
-          test "$(sha256sum /tmp/Cargo.lock | awk '{print $1}')" = "${EXPECTED_SHA256}"
-
-          status="$(curl --silent --output /tmp/current.json --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/job/Cargo.lock?ref=${GITHUB_REF_NAME}")"
-          if [ "${status}" = '200' ]; then
-            echo 'Cargo.lock already exists; refusing to overwrite from transient importer.'
-            exit 0
-          fi
-          test "${status}" = '404'
-
-          lock_b64="$(base64 -w0 /tmp/Cargo.lock)"
-          jq -n \
-            --arg message 'build(authz): pin Cargo dependency graph' \
-            --arg content "${lock_b64}" \
-            --arg branch "${GITHUB_REF_NAME}" \
-            '{message:$message, content:$content, branch:$branch}' > /tmp/payload.json
-
-          curl --fail-with-body --location \
-            --request PUT \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'Accept: application/vnd.github+json' \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            --data-binary @/tmp/payload.json \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/job/Cargo.lock" \
-            > /tmp/create.json
-          jq -e '.commit.sha and .content.sha' /tmp/create.json >/dev/null
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --component clippy --component rustfmt
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
+          cargo +1.98.1 fmt --all --check
+          cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
+          cargo +1.98.1 test --locked --workspace --all-targets
