@@ -68,3 +68,16 @@ fn invalidation_removes_only_the_target_tenant_snapshot() {
         Some(7)
     );
 }
+
+#[test]
+fn newer_snapshot_replaces_the_previous_tenant_version() {
+    let mut cache = PolicyCache::new();
+    cache.insert("tenant-a", valid_snapshot(7));
+    cache.insert("tenant-a", valid_snapshot(8));
+
+    assert!(cache.get_exact("tenant-a", 7).is_none());
+    assert_eq!(
+        cache.get_exact("tenant-a", 8).map(PolicySnapshot::version),
+        Some(8)
+    );
+}
