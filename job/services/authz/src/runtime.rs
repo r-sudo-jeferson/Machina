@@ -97,7 +97,9 @@ impl fmt::Display for RuntimeServeError {
         match self {
             Self::Grpc(_) => formatter.write_str("authorization gRPC server failed"),
             Self::ProbeAccept(_) => formatter.write_str("authorization probe listener failed"),
-            Self::ProbeBind(_) => formatter.write_str("authorization probe listener could not bind"),
+            Self::ProbeBind(_) => {
+                formatter.write_str("authorization probe listener could not bind")
+            }
         }
     }
 }
@@ -223,7 +225,10 @@ async fn read_probe_request(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
     }
 }
 
-fn classify_probe_request(request: &[u8], probes: &ProbeState) -> (u16, &'static str, &'static str) {
+fn classify_probe_request(
+    request: &[u8],
+    probes: &ProbeState,
+) -> (u16, &'static str, &'static str) {
     let request_line = request
         .split(|byte| *byte == b'\n')
         .next()
