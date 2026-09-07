@@ -3,8 +3,7 @@ use machina_authz::evaluator::DecisionReason;
 use machina_authz::policy_store::{PolicyCache, PolicySnapshot};
 use machina_authz::service::{AuthorizationEngine, DecisionInput};
 
-const TEST_SNAPSHOT_HASH: &str =
-    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const TEST_SNAPSHOT_HASH: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 fn cedar_request() -> Request {
     Request::new(
