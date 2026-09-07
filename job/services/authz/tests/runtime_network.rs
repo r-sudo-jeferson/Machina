@@ -98,9 +98,8 @@ async fn probe_listener_reports_liveness_and_reversible_readiness_until_shutdown
     let handler = AuthorizationServiceHandler::new(PolicyCache::new());
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let server = tokio::spawn(async move {
-        serve(config, handler, server_probes, shutdown_rx).await
-    });
+    let server =
+        tokio::spawn(async move { serve(config, handler, server_probes, shutdown_rx).await });
 
     await_http_status(probe_addr, "/healthz", 200).await;
     await_http_status(probe_addr, "/readyz", 503).await;
