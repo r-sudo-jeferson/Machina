@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "slice": "MCH-S001@1.0.0",
+  "policy": "Exact versions are mandatory. Any GitHub Action must be pinned by full commit SHA before use. Any OCI image must be pinned by digest before it enters CI, preview, or release execution.",
+  "toolchains": {
+    "go": {
+      "version": "1.27.1",
+      "source": "go.dev"
+    },
+    "rust": {
+      "version": "1.98.1",
+      "source": "rust-lang.org"
+    },
+    "node": {
+      "version": "24.20.0",
+      "channel": "LTS",
+      "source": "nodejs.org"
+    },
+    "pnpm": {
+      "version": "12.3.4",
+      "source": "pnpm.io"
+    }
+  },
+  "platformDependencies": {
+    "postgresql": {
+      "version": "18.6",
+      "source": "postgresql.org"
+    },
+    "keycloak": {
+      "version": "26.7.3",
+      "source": "keycloak.org"
+    }
+  },
+  "webBaseline": {
+    "react": "19.2",
+    "vite": "8.1"
+  },
+  "githubActions": {
+    "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "actions/setup-go": "b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+  }
+}
