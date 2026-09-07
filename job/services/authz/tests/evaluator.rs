@@ -129,5 +129,8 @@ fn cedar_evaluation_diagnostics_deny_without_leaking_raw_error() {
     assert!(!decision.allowed, "evaluation uncertainty must deny");
     assert_eq!(decision.policy_version, 7);
     assert_eq!(decision.reason_codes, vec![DecisionReason::EvaluationError]);
-    assert_eq!(decision.diagnostic_ref.as_deref(), Some("cedar-evaluation-error"));
+    assert_eq!(
+        decision.diagnostic_ref.as_deref(),
+        Some("cedar-evaluation-error")
+    );
 }
