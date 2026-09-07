@@ -47,7 +47,7 @@ impl Evaluator {
         required_policy_version: u64,
         snapshot: &VersionedPolicySet,
     ) -> Decision {
-        if snapshot.version < required_policy_version {
+        if snapshot.version != required_policy_version {
             return Decision {
                 allowed: false,
                 policy_version: snapshot.version,
