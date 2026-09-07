@@ -57,7 +57,9 @@ impl fmt::Display for StartupError {
             Self::InvalidRuntimeConfig(RuntimeConfigError::ZeroPort) => {
                 formatter.write_str("listener ports must be non-zero")
             }
-            Self::PolicySource(error) => write!(formatter, "authorization policy source failed: {error}"),
+            Self::PolicySource(error) => {
+                write!(formatter, "authorization policy source failed: {error}")
+            }
             Self::Signal(_) => {
                 formatter.write_str("failed to register process termination signal handler")
             }

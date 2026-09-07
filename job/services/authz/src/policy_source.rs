@@ -29,7 +29,9 @@ pub enum PolicySourceError {
 impl fmt::Display for PolicySourceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidConfiguration => formatter.write_str("invalid authorization database configuration"),
+            Self::InvalidConfiguration => {
+                formatter.write_str("invalid authorization database configuration")
+            }
             Self::OpportunisticTlsRejected => {
                 formatter.write_str("authorization database must use explicit TLS policy")
             }
@@ -40,7 +42,9 @@ impl fmt::Display for PolicySourceError {
             Self::InvalidVersion => formatter.write_str("authorization policy version is invalid"),
             Self::InvalidSchema => formatter.write_str("authorization policy schema is invalid"),
             Self::InvalidPolicies => formatter.write_str("authorization policy set is invalid"),
-            Self::InvalidSnapshot => formatter.write_str("authorization policy snapshot is invalid"),
+            Self::InvalidSnapshot => {
+                formatter.write_str("authorization policy snapshot is invalid")
+            }
         }
     }
 }
@@ -63,7 +67,8 @@ impl PostgresPolicySource {
         database_url: &str,
         probes: ProbeState,
     ) -> Result<Self, PolicySourceError> {
-        let config = Config::from_str(database_url).map_err(|_| PolicySourceError::InvalidConfiguration)?;
+        let config =
+            Config::from_str(database_url).map_err(|_| PolicySourceError::InvalidConfiguration)?;
         let healthy = Arc::new(AtomicBool::new(false));
 
         let client = match config.get_ssl_mode() {
@@ -82,7 +87,8 @@ impl PostgresPolicySource {
                 client
             }
             SslMode::Require => {
-                let roots = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+                let roots =
+                    RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
                 let tls_config = ClientConfig::builder()
                     .with_root_certificates(roots)
                     .with_no_client_auth();
@@ -189,22 +195,18 @@ impl PostgresPolicySource {
         let schema_json: String = row.try_get(2).map_err(|_| PolicySourceError::QueryFailed)?;
         let cedar_policies: String = row.try_get(3).map_err(|_| PolicySourceError::QueryFailed)?;
 
-        let schema = Schema::from_json_str(&schema_json).map_err(|_| PolicySourceError::InvalidSchema)?;
+        let schema =
+            Schema::from_json_str(&schema_json).map_err(|_| PolicySourceError::InvalidSchema)?;
         let policies = cedar_policies
             .parse::<PolicySet>()
             .map_err(|_| PolicySourceError::InvalidPolicies)?;
-        let snapshot = PolicySnapshot::try_new(
-            version,
-            snapshot_hash,
-            schema,
-            policies,
-            Entities::empty(),
-        )
-        .map_err(|error| match error {
-            PolicyLoadError::InvalidSnapshotHash | PolicyLoadError::ValidationFailed => {
-                PolicySourceError::InvalidSnapshot
-            }
-        })?;
+        let snapshot =
+            PolicySnapshot::try_new(version, snapshot_hash, schema, policies, Entities::empty())
+                .map_err(|error| match error {
+                    PolicyLoadError::InvalidSnapshotHash | PolicyLoadError::ValidationFailed => {
+                        PolicySourceError::InvalidSnapshot
+                    }
+                })?;
 
         Ok(Some(snapshot))
     }
