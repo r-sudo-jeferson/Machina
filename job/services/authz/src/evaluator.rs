@@ -3,6 +3,7 @@ use cedar_policy::{Entities, PolicySet, Request};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecisionReason {
     DefaultDeny,
+    StalePolicyVersion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,9 +42,18 @@ impl Evaluator {
     pub fn decide(
         &self,
         _request: &Request,
-        _required_policy_version: u64,
+        required_policy_version: u64,
         snapshot: &VersionedPolicySet,
     ) -> Decision {
+        if snapshot.version < required_policy_version {
+            return Decision {
+                allowed: false,
+                policy_version: snapshot.version,
+                reason_codes: vec![DecisionReason::StalePolicyVersion],
+                diagnostic_ref: None,
+            };
+        }
+
         // A missing policy is never an implicit permit. This is the first and
         // strongest service-boundary invariant; later policy evaluation may
         // only turn this into an allow after all validation/version/error
