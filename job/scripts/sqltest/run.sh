@@ -45,7 +45,7 @@ if [[ -n "$(git status --porcelain -- "$GENERATED_DIR")" ]]; then
   git status --short -- "$GENERATED_DIR" >&2
   while IFS= read -r file; do
     printf 'SQLC_GENERATED_FILE_BEGIN %s\n' "$file" >&2
-    base64 -w0 "$file" >&2
+    cat "$file" >&2
     printf '\nSQLC_GENERATED_FILE_END %s\n' "$file" >&2
   done < <(find "$GENERATED_DIR" -maxdepth 1 -type f -print | sort)
   fail 'checked-in sqlc output is missing, stale, or non-deterministic'
