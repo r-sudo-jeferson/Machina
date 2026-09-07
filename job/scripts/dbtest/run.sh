@@ -139,4 +139,6 @@ mapfile -t pool_lines <<< "$pool_reset"
 expect_equals '<cleared>' "${pool_lines[-2]}" 'transaction-local tenant context did not clear after commit'
 expect_equals '0' "${pool_lines[-1]}" 'same backend connection leaked previous tenant rows after commit'
 
+source scripts/dbtest/check_last_owner.sh
+
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
