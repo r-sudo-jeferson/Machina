@@ -1,0 +1,135 @@
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
+use std::task::{Context as TaskContext, Poll, Wake, Waker};
+
+use cedar_policy::{Entities, PolicySet, Schema};
+use machina_authz::grpc::AuthorizationServiceHandler;
+use machina_authz::policy_store::{PolicyCache, PolicySnapshot};
+use machina_authz::proto::authorization_service_server::AuthorizationService;
+use machina_authz::proto::DecisionRequest;
+use tonic::{Code, Request as TonicRequest};
+
+struct NoopWake;
+
+impl Wake for NoopWake {
+    fn wake(self: Arc<Self>) {}
+}
+
+fn ready<F: Future>(future: F) -> F::Output {
+    let waker = Waker::from(Arc::new(NoopWake));
+    let mut context = TaskContext::from_waker(&waker);
+    let mut future = Box::pin(future);
+
+    match future.as_mut().poll(&mut context) {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!("authorization handler must not suspend on external work"),
+    }
+}
+
+fn schema() -> Schema {
+    let (schema, warnings) = Schema::from_cedarschema_str(
+        r#"
+        entity User = {};
+        entity PlatformContext = {};
+        action "context.read" appliesTo {
+            principal: User,
+            resource: PlatformContext,
+            context: {
+                locale: String
+            }
+        };
+        "#,
+    )
+    .expect("schema");
+    assert_eq!(warnings.count(), 0, "test schema must have no warnings");
+    schema
+}
+
+fn permit_snapshot(version: u64) -> PolicySnapshot {
+    let policies: PolicySet = r#"
+        permit(
+            principal == User::"subject-a",
+            action == Action::"context.read",
+            resource == PlatformContext::"active"
+        ) when {
+            context.locale == "pt-BR"
+        };
+    "#
+    .parse()
+    .expect("policy");
+
+    PolicySnapshot::try_new(version, schema(), policies, Entities::empty()).expect("valid snapshot")
+}
+
+fn request(tenant_id: &str, required_policy_version: u64) -> DecisionRequest {
+    DecisionRequest {
+        subject_id: "subject-a".to_owned(),
+        tenant_id: tenant_id.to_owned(),
+        workspace_id: "workspace-a".to_owned(),
+        action: "context.read".to_owned(),
+        resource_type: "PlatformContext".to_owned(),
+        resource_id: "active".to_owned(),
+        required_policy_version,
+        correlation_id: "corr-a".to_owned(),
+        context: HashMap::from([("locale".to_owned(), "pt-BR".to_owned())]),
+    }
+}
+
+fn assert_tonic_service<T: AuthorizationService>() {}
+
+#[test]
+fn handler_implements_canonical_tonic_service_contract() {
+    assert_tonic_service::<AuthorizationServiceHandler>();
+}
+
+#[test]
+fn decide_denies_fail_closed_when_exact_policy_snapshot_is_missing() {
+    let handler = AuthorizationServiceHandler::new(PolicyCache::new());
+
+    let response = ready(AuthorizationService::decide(
+        &handler,
+        TonicRequest::new(request("tenant-a", 7)),
+    ))
+    .expect("transport response")
+    .into_inner();
+
+    assert!(!response.allowed);
+    assert_eq!(response.policy_version, 0);
+    assert_eq!(response.reason_codes, vec!["policy_unavailable"]);
+}
+
+#[test]
+fn decide_translates_typed_request_context_and_preserves_cedar_allow() {
+    let mut cache = PolicyCache::new();
+    cache.insert("tenant-a", permit_snapshot(7));
+    let handler = AuthorizationServiceHandler::new(cache);
+
+    let response = ready(AuthorizationService::decide(
+        &handler,
+        TonicRequest::new(request("tenant-a", 7)),
+    ))
+    .expect("transport response")
+    .into_inner();
+
+    assert!(response.allowed);
+    assert_eq!(response.policy_version, 7);
+    assert!(response.reason_codes.is_empty());
+}
+
+#[test]
+fn structurally_invalid_cedar_identity_is_rejected_before_evaluation() {
+    let mut cache = PolicyCache::new();
+    cache.insert("tenant-a", permit_snapshot(7));
+    let handler = AuthorizationServiceHandler::new(cache);
+    let mut malformed = request("tenant-a", 7);
+    malformed.resource_type = "Platform Context".to_owned();
+
+    let status = ready(AuthorizationService::decide(
+        &handler,
+        TonicRequest::new(malformed),
+    ))
+    .expect_err("invalid resource type must not reach Cedar");
+
+    assert_eq!(status.code(), Code::InvalidArgument);
+}
