@@ -94,7 +94,8 @@ fn matching_permit_policy_allows() {
 #[test]
 fn matching_forbid_overrides_matching_permit() {
     let evaluator = Evaluator::new();
-    let snapshot = VersionedPolicySet::new(7, matching_permit_and_forbid_policy(), Entities::empty());
+    let snapshot =
+        VersionedPolicySet::new(7, matching_permit_and_forbid_policy(), Entities::empty());
 
     let decision = evaluator.decide(&request(), 7, &snapshot);
 
