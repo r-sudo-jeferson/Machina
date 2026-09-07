@@ -6,9 +6,15 @@ use evaluator::{DecisionReason, Evaluator, VersionedPolicySet};
 
 fn request() -> Request {
     Request::new(
-        "User::\"subject-a\"".parse::<EntityUid>().expect("principal"),
-        "Action::\"context.read\"".parse::<EntityUid>().expect("action"),
-        "PlatformContext::\"active\"".parse::<EntityUid>().expect("resource"),
+        "User::\"subject-a\""
+            .parse::<EntityUid>()
+            .expect("principal"),
+        "Action::\"context.read\""
+            .parse::<EntityUid>()
+            .expect("action"),
+        "PlatformContext::\"active\""
+            .parse::<EntityUid>()
+            .expect("resource"),
         Context::empty(),
         None,
     )
@@ -49,7 +55,10 @@ fn stale_policy_version_denies_before_evaluation() {
 
     assert!(!decision.allowed);
     assert_eq!(decision.policy_version, 7);
-    assert_eq!(decision.reason_codes, vec![DecisionReason::StalePolicyVersion]);
+    assert_eq!(
+        decision.reason_codes,
+        vec![DecisionReason::StalePolicyVersion]
+    );
     assert!(decision.diagnostic_ref.is_none());
 }
 
