@@ -10,6 +10,7 @@ pub enum PolicyLoadError {
 #[derive(Debug, Clone)]
 pub struct PolicySnapshot {
     version: u64,
+    schema: Schema,
     policies: PolicySet,
     entities: Entities,
 }
@@ -21,13 +22,15 @@ impl PolicySnapshot {
         policies: PolicySet,
         entities: Entities,
     ) -> Result<Self, PolicyLoadError> {
-        let validation = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        let validation =
+            Validator::new(schema.clone()).validate(&policies, ValidationMode::Strict);
         if !validation.validation_passed() {
             return Err(PolicyLoadError::ValidationFailed);
         }
 
         Ok(Self {
             version,
+            schema,
             policies,
             entities,
         })
@@ -35,6 +38,10 @@ impl PolicySnapshot {
 
     pub fn version(&self) -> u64 {
         self.version
+    }
+
+    pub(crate) fn schema(&self) -> &Schema {
+        &self.schema
     }
 
     pub(crate) fn evaluation_parts(&self) -> (&PolicySet, &Entities) {
