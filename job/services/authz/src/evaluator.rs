@@ -14,6 +14,7 @@ pub enum DecisionReason {
 pub struct Decision {
     pub allowed: bool,
     pub policy_version: u64,
+    pub policy_snapshot_hash: Option<String>,
     pub reason_codes: Vec<DecisionReason>,
     pub diagnostic_ref: Option<String>,
 }
@@ -33,26 +34,28 @@ impl Evaluator {
         snapshot: &PolicySnapshot,
     ) -> Decision {
         let policy_version = snapshot.version();
+        let policy_snapshot_hash = Some(snapshot.snapshot_hash().to_owned());
         if policy_version != required_policy_version {
             return Decision {
                 allowed: false,
                 policy_version,
+                policy_snapshot_hash,
                 reason_codes: vec![DecisionReason::StalePolicyVersion],
                 diagnostic_ref: None,
             };
         }
 
         let Some(principal) = request.principal() else {
-            return request_validation_error(policy_version);
+            return request_validation_error(policy_version, snapshot.snapshot_hash());
         };
         let Some(action) = request.action() else {
-            return request_validation_error(policy_version);
+            return request_validation_error(policy_version, snapshot.snapshot_hash());
         };
         let Some(resource) = request.resource() else {
-            return request_validation_error(policy_version);
+            return request_validation_error(policy_version, snapshot.snapshot_hash());
         };
         let Some(context) = request.context() else {
-            return request_validation_error(policy_version);
+            return request_validation_error(policy_version, snapshot.snapshot_hash());
         };
 
         let validated_request = match Request::new(
@@ -63,7 +66,9 @@ impl Evaluator {
             Some(snapshot.schema()),
         ) {
             Ok(request) => request,
-            Err(_) => return request_validation_error(policy_version),
+            Err(_) => {
+                return request_validation_error(policy_version, snapshot.snapshot_hash());
+            }
         };
 
         let (policies, entities) = snapshot.evaluation_parts();
@@ -76,6 +81,7 @@ impl Evaluator {
             return Decision {
                 allowed: false,
                 policy_version,
+                policy_snapshot_hash,
                 reason_codes: vec![DecisionReason::EvaluationError],
                 diagnostic_ref: Some("cedar-evaluation-error".to_owned()),
             };
@@ -85,6 +91,7 @@ impl Evaluator {
             return Decision {
                 allowed: true,
                 policy_version,
+                policy_snapshot_hash,
                 reason_codes: Vec::new(),
                 diagnostic_ref: None,
             };
@@ -99,16 +106,18 @@ impl Evaluator {
         Decision {
             allowed: false,
             policy_version,
+            policy_snapshot_hash,
             reason_codes: vec![reason],
             diagnostic_ref: None,
         }
     }
 }
 
-fn request_validation_error(policy_version: u64) -> Decision {
+fn request_validation_error(policy_version: u64, policy_snapshot_hash: &str) -> Decision {
     Decision {
         allowed: false,
         policy_version,
+        policy_snapshot_hash: Some(policy_snapshot_hash.to_owned()),
         reason_codes: vec![DecisionReason::EvaluationError],
         diagnostic_ref: Some("cedar-request-validation-error".to_owned()),
     }
