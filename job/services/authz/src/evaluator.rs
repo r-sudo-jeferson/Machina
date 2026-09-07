@@ -1,4 +1,4 @@
-use cedar_policy::{Entities, PolicySet, Request};
+use cedar_policy::{Authorizer, Decision as CedarDecision, Entities, PolicySet, Request};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecisionReason {
@@ -41,7 +41,7 @@ impl Evaluator {
 
     pub fn decide(
         &self,
-        _request: &Request,
+        request: &Request,
         required_policy_version: u64,
         snapshot: &VersionedPolicySet,
     ) -> Decision {
@@ -54,11 +54,33 @@ impl Evaluator {
             };
         }
 
-        // A missing policy is never an implicit permit. This is the first and
-        // strongest service-boundary invariant; later policy evaluation may
-        // only turn this into an allow after all validation/version/error
-        // gates have succeeded.
-        let _ = (&snapshot.policies, &snapshot.entities);
+        let response = Authorizer::new().is_authorized(
+            request,
+            &snapshot.policies,
+            &snapshot.entities,
+        );
+
+        // Cedar may continue evaluating other policies after an evaluation
+        // error. Machina therefore never turns a response containing an error
+        // diagnostic into an allow.
+        if response.diagnostics().errors().next().is_some() {
+            return Decision {
+                allowed: false,
+                policy_version: snapshot.version,
+                reason_codes: vec![DecisionReason::DefaultDeny],
+                diagnostic_ref: None,
+            };
+        }
+
+        if response.decision() == CedarDecision::Allow {
+            return Decision {
+                allowed: true,
+                policy_version: snapshot.version,
+                reason_codes: Vec::new(),
+                diagnostic_ref: None,
+            };
+        }
+
         Decision {
             allowed: false,
             policy_version: snapshot.version,
