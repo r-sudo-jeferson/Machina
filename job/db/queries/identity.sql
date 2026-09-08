@@ -59,3 +59,23 @@ FROM iam.list_session_tenants(sqlc.arg(session_token_hash)::bytea) AS session_te
 
 -- name: RevokeSession :exec
 SELECT iam.revoke_session(sqlc.arg(session_token_hash)::bytea);
+
+-- name: CreateOIDCAuthorizationAttempt :exec
+SELECT iam.create_oidc_authorization_attempt(
+  sqlc.arg(state_hash)::bytea,
+  sqlc.arg(nonce_hash)::bytea,
+  sqlc.arg(pkce_verifier)::text,
+  sqlc.arg(redirect_uri)::text,
+  sqlc.arg(expires_at)::timestamptz
+);
+
+-- name: ConsumeOIDCAuthorizationAttempt :one
+SELECT
+  attempt.nonce_hash::bytea AS nonce_hash,
+  attempt.pkce_verifier::text AS pkce_verifier,
+  attempt.redirect_uri::text AS redirect_uri
+FROM iam.consume_oidc_authorization_attempt(sqlc.arg(state_hash)::bytea) AS attempt(
+  nonce_hash,
+  pkce_verifier,
+  redirect_uri
+);
