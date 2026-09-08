@@ -28,13 +28,10 @@ pub enum PolicySourceError {
 
 impl PolicySourceError {
     fn invalidates_source_health(self) -> bool {
-        matches!(Self::from(self), Self::ConnectionUnavailable | Self::QueryFailed)
-    }
-}
-
-impl From<PolicySourceError> for PolicySourceError {
-    fn from(error: PolicySourceError) -> Self {
-        error
+        matches!(
+            self,
+            Self::ConnectionUnavailable | Self::QueryFailed
+        )
     }
 }
 
