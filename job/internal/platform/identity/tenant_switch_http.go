@@ -146,6 +146,9 @@ func (h *TenantSwitchHTTPHandler) recordTenantSwitchMetric(ctx context.Context, 
 }
 
 func tenantSwitchHTTPMetricOutcome(err error, status int) observability.Outcome {
+	if status == http.StatusForbidden && errors.Is(err, ErrTenantSwitchForbidden) {
+		return observability.OutcomeDenied
+	}
 	if status == http.StatusConflict &&
 		(errors.Is(err, ErrTenantSwitchScopeConflict) || errors.Is(err, ErrTenantSwitchInProgress) || errors.Is(err, ErrTenantSwitchStale)) {
 		return observability.OutcomeConflict
@@ -228,6 +231,10 @@ func validateTenantSwitchHTTPResult(result TenantSwitchResult) error {
 
 func mapTenantSwitchHTTPError(err error) (int, string) {
 	switch {
+	case errors.Is(err, ErrTenantSwitchForbidden):
+		return http.StatusForbidden, "tenant_switch_forbidden"
+	case errors.Is(err, ErrTenantSwitchAuthorizationUnavailable):
+		return http.StatusServiceUnavailable, "tenant_switch_authorization_unavailable"
 	case errors.Is(err, ErrInvalidTenantSwitchRequest), errors.Is(err, ErrInvalidTenantSwitchScope),
 		errors.Is(err, ErrInvalidTenantSwitchOutcome), errors.Is(err, ErrInvalidTenantSwitchPair):
 		return http.StatusBadRequest, "tenant_switch_invalid"
