@@ -57,6 +57,7 @@ query_as "$RUNTIME_ROLE" "SELECT iam.create_session('${SCOPE_SESSION_ID}','${SUB
 # the exact returned deadline, rotate through the existing server-validated
 # switch boundary, complete the receipt, and finish the pair in one commit.
 first_flow_log="$(mktemp "${RUNNER_TEMP:-/tmp}/machina-scope-first.XXXXXX")"
+set +e
 docker exec -i "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$RUNTIME_ROLE" -d "$DB_NAME" >"$first_flow_log" 2>&1 <<SQL
 BEGIN;
 SELECT * FROM iam.bind_tenant_switch_idempotency(
@@ -99,6 +100,13 @@ SELECT * FROM iam.finish_tenant_switch_idempotency(
 SELECT 'first:' || :'bind_mapping_state' || ':' || :'claim_claim_state' || ':' || :'switched_session_id' || ':' || :'finished_finished';
 COMMIT;
 SQL
+first_flow_exit=$?
+set -e
+if [[ "$first_flow_exit" -ne 0 ]]; then
+  cat "$first_flow_log" >&2
+  rm -f "$first_flow_log"
+  fail "first tenant-switch scope transaction failed with exit ${first_flow_exit}"
+fi
 first_flow_result="$(tail -n 1 "$first_flow_log")"
 if [[ "$first_flow_result" != "first:claimed:claimed:${SCOPE_SESSION_ID}:t" ]]; then
   cat "$first_flow_log" >&2
@@ -109,7 +117,7 @@ rm -f "$first_flow_log"
 
 expect_equals '0' "$(query_as "$RUNTIME_ROLE" "SELECT count(*) FROM iam.get_active_session(decode('${SCOPE_OLD_HASH}','hex'))")" 'successful scope switch left the old session token active'
 expect_equals "${TENANT_B}:${WORKSPACE_B}" "$(query_as "$RUNTIME_ROLE" "SELECT active_tenant_id::text || ':' || active_workspace_id::text FROM iam.get_active_session(decode('${SCOPE_NEW_HASH}','hex'))")" 'successful scope switch did not preserve server-selected target context'
-expect_equals "${SCOPE_RECEIPT_HASH}:${SCOPE_SESSION_ID}:2" "$(query_as postgres "SELECT request_hash || ':' || session_id::text || ':' || result_generation::text FROM ops.idempotency_keys AS receipt JOIN iam.tenant_switch_idempotency_scopes AS scope ON scope.tenant_id=receipt.tenant_id AND scope.idempotency_key=receipt.idempotency_key WHERE receipt.tenant_id='${TENANT_B}' AND receipt.idempotency_key='${SCOPE_KEY}'")" 'scope and receipt were not paired with the expected generation'
+expect_equals "${SCOPE_RECEIPT_HASH}:${SCOPE_SESSION_ID}:2" "$(query_as postgres "SELECT receipt.request_hash || ':' || scope.session_id::text || ':' || scope.result_generation::text FROM ops.idempotency_keys AS receipt JOIN iam.tenant_switch_idempotency_scopes AS scope ON scope.tenant_id=receipt.tenant_id AND scope.idempotency_key=receipt.idempotency_key WHERE receipt.tenant_id='${TENANT_B}' AND receipt.idempotency_key='${SCOPE_KEY}'")" 'scope and receipt were not paired with the expected generation'
 expect_equals '1' "$(query_as postgres "SELECT count(*) FROM ops.idempotency_keys AS receipt JOIN iam.tenant_switch_idempotency_scopes AS scope ON scope.tenant_id=receipt.tenant_id AND scope.idempotency_key=receipt.idempotency_key WHERE receipt.tenant_id='${TENANT_B}' AND receipt.idempotency_key='${SCOPE_KEY}' AND receipt.operation='${SCOPE_OPERATION}' AND receipt.request_hash=encode(sha256(convert_to('${SCOPE_OPERATION}' || chr(10) || '${SCOPE_SESSION_ID}' || chr(10) || '${SCOPE_BODY_HASH_B}','UTF8')),'hex') AND receipt.expires_at=scope.expires_at AND scope.claim_generation=1 AND scope.result_generation=2")" 'scope/receipt deadline or canonical receipt hash mismatch'
 
 # The function clears its private capability before returning, while leaving
