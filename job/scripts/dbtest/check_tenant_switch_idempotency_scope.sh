@@ -194,4 +194,138 @@ query_as postgres "UPDATE iam.tenants SET status='suspended',updated_at=clock_ti
 expect_failure "$RUNTIME_ROLE" "SELECT * FROM iam.bind_tenant_switch_idempotency(decode('${SCOPE_REVOKED_HASH}','hex'),'${SCOPE_KEY_SECOND}','${SCOPE_BODY_HASH_B}','${TENANT_B}')" 'suspended tenant bound a tenant-switch scope'
 query_as postgres "UPDATE iam.tenants SET status='active',updated_at=clock_timestamp() WHERE id='${TENANT_B}'" >/dev/null
 
+# Two requests carrying the same old cookie must serialize on the session
+# row. The winner commits one rotation; the waiter rechecks the now-revoked
+# token after its lock wait and is denied instead of rotating a second time.
+readonly CONCURRENT_SWITCH_SESSION_ID='3c000000-0000-0000-0000-000000000001'
+readonly CONCURRENT_SWITCH_OLD_HASH="$(printf 'c1%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_OLD_CSRF="$(printf 'c2%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_NEW_HASH="$(printf 'c3%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_NEW_CSRF="$(printf 'c4%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_ROTATED_HASH="$(printf 'c5%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_ROTATED_CSRF="$(printf 'c6%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_KEY='tenant-switch-concurrent-0001'
+readonly CONCURRENT_SWITCH_CORRELATION='4b000000-0000-0000-0000-000000000004'
+readonly CONCURRENT_SWITCH_REPLAY_CORRELATION='4b000000-0000-0000-0000-000000000005'
+readonly CONCURRENT_SWITCH_BODY_HASH="$(scope_body_hash "$TENANT_B")"
+readonly CONCURRENT_SWITCH_HOLDER_APP='tenant-switch-concurrent-holder'
+readonly CONCURRENT_SWITCH_WAITER_APP='tenant-switch-concurrent-waiter'
+
+query_as "$RUNTIME_ROLE" "SELECT iam.create_session('${CONCURRENT_SWITCH_SESSION_ID}','${SUBJECT_A}',decode('${CONCURRENT_SWITCH_OLD_HASH}','hex'),decode('${CONCURRENT_SWITCH_OLD_CSRF}','hex'),clock_timestamp()+interval '2 hours')" >/dev/null
+
+concurrent_holder_log="$(mktemp "${RUNNER_TEMP:-/tmp}/machina-scope-concurrent-holder.XXXXXX")"
+concurrent_waiter_log="$(mktemp "${RUNNER_TEMP:-/tmp}/machina-scope-concurrent-waiter.XXXXXX")"
+docker exec -i "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$RUNTIME_ROLE" -d "$DB_NAME" >"$concurrent_holder_log" 2>&1 <<SQL &
+SET application_name = '${CONCURRENT_SWITCH_HOLDER_APP}';
+BEGIN;
+SELECT * FROM iam.bind_tenant_switch_idempotency(
+  decode('${CONCURRENT_SWITCH_OLD_HASH}','hex'),
+  '${CONCURRENT_SWITCH_KEY}',
+  '${CONCURRENT_SWITCH_BODY_HASH}',
+  '${TENANT_B}'
+) \gset bind_
+SELECT claim_state, correlation_id, response_status, response_body
+FROM ops.claim_idempotency_key(
+  '${CONCURRENT_SWITCH_KEY}',
+  '${SCOPE_OPERATION}',
+  :'bind_receipt_hash',
+  '${CONCURRENT_SWITCH_CORRELATION}',
+  :'bind_receipt_expires_at'::timestamptz
+) \gset claim_
+SELECT pg_sleep(3);
+SELECT * FROM iam.switch_session_context(
+  decode('${CONCURRENT_SWITCH_OLD_HASH}','hex'),
+  decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),
+  decode('${CONCURRENT_SWITCH_NEW_CSRF}','hex'),
+  '${TENANT_B}'
+) \gset switched_
+SELECT ops.complete_idempotency_key(
+  '${CONCURRENT_SWITCH_KEY}',
+  '${SCOPE_OPERATION}',
+  :'bind_receipt_hash',
+  200,
+  jsonb_build_object(
+    'active_tenant_id', :'bind_active_tenant_id',
+    'active_workspace_id', :'bind_active_workspace_id',
+    'session_generation', (:'bind_generation'::bigint + 1),
+    'session_expires_at', :'bind_session_expires_at'
+  )
+) \gset completed_
+SELECT * FROM iam.finish_tenant_switch_idempotency(
+  decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),
+  '${CONCURRENT_SWITCH_KEY}',
+  '${CONCURRENT_SWITCH_BODY_HASH}'
+) \gset finished_
+SELECT 'holder:' || :'bind_mapping_state' || ':' || :'claim_claim_state' || ':' || :'switched_session_id' || ':' || :'finished_finished';
+COMMIT;
+SQL
+concurrent_holder_pid=$!
+
+holder_sleep_seen='0'
+for _ in $(seq 1 60); do
+  if [[ "$(query_as postgres "SELECT count(*) FROM pg_stat_activity WHERE application_name='${CONCURRENT_SWITCH_HOLDER_APP}' AND wait_event='PgSleep'")" == '1' ]]; then
+    holder_sleep_seen='1'
+    break
+  fi
+  sleep 0.1
+done
+[[ "$holder_sleep_seen" == '1' ]] || { cat "$concurrent_holder_log" >&2; fail 'concurrent switch holder never acquired the session lock'; }
+
+set +e
+docker exec -i "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$RUNTIME_ROLE" -d "$DB_NAME" >"$concurrent_waiter_log" 2>&1 <<SQL &
+SET application_name = '${CONCURRENT_SWITCH_WAITER_APP}';
+BEGIN;
+SELECT * FROM iam.bind_tenant_switch_idempotency(
+  decode('${CONCURRENT_SWITCH_OLD_HASH}','hex'),
+  '${CONCURRENT_SWITCH_KEY}',
+  '${CONCURRENT_SWITCH_BODY_HASH}',
+  '${TENANT_B}'
+) \gset bind_
+COMMIT;
+SQL
+concurrent_waiter_pid=$!
+set -e
+
+waiter_lock_seen='0'
+for _ in $(seq 1 60); do
+  if [[ "$(query_as postgres "SELECT count(*) FROM pg_stat_activity WHERE application_name='${CONCURRENT_SWITCH_WAITER_APP}' AND wait_event_type='Lock'")" == '1' ]]; then
+    waiter_lock_seen='1'
+    break
+  fi
+  sleep 0.1
+done
+[[ "$waiter_lock_seen" == '1' ]] || { cat "$concurrent_waiter_log" >&2; fail 'concurrent switch waiter did not wait on the session lock'; }
+
+if wait "$concurrent_holder_pid"; then
+  concurrent_holder_result="$(tail -n 1 "$concurrent_holder_log")"
+else
+  cat "$concurrent_holder_log" >&2
+  rm -f "$concurrent_holder_log" "$concurrent_waiter_log"
+  fail 'concurrent switch holder failed'
+fi
+expect_equals "holder:claimed:claimed:${CONCURRENT_SWITCH_SESSION_ID}:t" "$concurrent_holder_result" 'concurrent switch winner did not commit exactly once'
+
+set +e
+wait "$concurrent_waiter_pid"
+concurrent_waiter_exit=$?
+set -e
+[[ "$concurrent_waiter_exit" -ne 0 ]] || { cat "$concurrent_waiter_log" >&2; rm -f "$concurrent_holder_log" "$concurrent_waiter_log"; fail 'concurrent old-cookie waiter unexpectedly committed'; }
+grep -q 'active session unavailable' "$concurrent_waiter_log" || { cat "$concurrent_waiter_log" >&2; rm -f "$concurrent_holder_log" "$concurrent_waiter_log"; fail 'concurrent waiter did not fail as an unauthorized old token'; }
+rm -f "$concurrent_holder_log" "$concurrent_waiter_log"
+
+expect_equals '0' "$(query_as "$RUNTIME_ROLE" "SELECT count(*) FROM iam.get_active_session(decode('${CONCURRENT_SWITCH_OLD_HASH}','hex'))")" 'concurrent winner left the old cookie active'
+expect_equals '1' "$(query_as "$RUNTIME_ROLE" "SELECT count(*) FROM iam.get_active_session(decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'))")" 'concurrent winner did not create one replacement session'
+expect_equals '2' "$(query_as postgres "SELECT generation FROM iam.sessions WHERE id='${CONCURRENT_SWITCH_SESSION_ID}'")" 'concurrent old-cookie requests advanced generation more than once'
+
+# The current replacement cookie replays the immutable outcome without a
+# second rotation, while a later generation makes the old key stale.
+concurrent_replay="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT * FROM iam.bind_tenant_switch_idempotency(decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),'${CONCURRENT_SWITCH_KEY}','${CONCURRENT_SWITCH_BODY_HASH}','${TENANT_B}') \\gset bind_ SELECT claim_state || ':' || correlation_id FROM ops.claim_idempotency_key('${CONCURRENT_SWITCH_KEY}','${SCOPE_OPERATION}',:'bind_receipt_hash','${CONCURRENT_SWITCH_REPLAY_CORRELATION}',:'bind_receipt_expires_at'::timestamptz); COMMIT;" | tail -n 1)"
+expect_equals "replay:${CONCURRENT_SWITCH_CORRELATION}" "$concurrent_replay" 'current-cookie retry did not replay the original correlation'
+expect_equals '2' "$(query_as postgres "SELECT generation FROM iam.sessions WHERE id='${CONCURRENT_SWITCH_SESSION_ID}'")" 'current-cookie retry rotated the session a second time'
+
+query_as "$RUNTIME_ROLE" "SELECT * FROM iam.rotate_session(decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),decode('${CONCURRENT_SWITCH_ROTATED_HASH}','hex'),decode('${CONCURRENT_SWITCH_ROTATED_CSRF}','hex'))" >/dev/null
+expect_equals '3' "$(query_as postgres "SELECT generation FROM iam.sessions WHERE id='${CONCURRENT_SWITCH_SESSION_ID}'")" 'later rotation did not advance the concurrent session generation'
+expect_equals 'stale' "$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT mapping_state FROM iam.bind_tenant_switch_idempotency(decode('${CONCURRENT_SWITCH_ROTATED_HASH}','hex'),'${CONCURRENT_SWITCH_KEY}','${CONCURRENT_SWITCH_BODY_HASH}','${TENANT_B}'); ROLLBACK;" | tail -n 1)" 'later generation replayed the concurrent historical key'
+expect_failure "$RUNTIME_ROLE" "SELECT * FROM iam.bind_tenant_switch_idempotency(decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),'${CONCURRENT_SWITCH_KEY}','${CONCURRENT_SWITCH_BODY_HASH}','${TENANT_B}')" 'pre-rotation concurrent cookie remained active after strict invalidation'
+
 printf 'dbtest: stable tenant-switch scope, paired receipt, strict replay and generation invalidation passed\n'
