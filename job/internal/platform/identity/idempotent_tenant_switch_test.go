@@ -110,7 +110,7 @@ func (u *recordingTenantSwitchUnit) SetTenantSwitchResponseETag(_ context.Contex
 	if u.etagErr != nil {
 		return false, u.etagErr
 	}
-	u.responseETag = arg.ResponseETag
+	u.responseETag = arg.ResponseEtag
 	return true, nil
 }
 
