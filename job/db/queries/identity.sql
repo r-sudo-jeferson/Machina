@@ -33,6 +33,23 @@ FROM iam.get_active_session(sqlc.arg(session_token_hash)::bytea) AS active_sessi
   rotated_at
 );
 
+-- name: RotateSession :one
+SELECT
+  rotated_session.id::uuid AS id,
+  rotated_session.subject_id::uuid AS subject_id,
+  rotated_session.expires_at::timestamptz AS expires_at,
+  rotated_session.rotated_at::timestamptz AS rotated_at
+FROM iam.rotate_session(
+  sqlc.arg(session_token_hash)::bytea,
+  sqlc.arg(new_session_token_hash)::bytea,
+  sqlc.arg(new_csrf_token_hash)::bytea
+) AS rotated_session(
+  id,
+  subject_id,
+  expires_at,
+  rotated_at
+);
+
 -- name: GetSessionIdentity :one
 SELECT
   session_identity.id::uuid AS id,
