@@ -12,10 +12,10 @@ func TestVerifyRepositoryAcceptsProductOnlyUnderJobAndProviderMetadata(t *testin
 
 	root := t.TempDir()
 	writeRepoFiles(t, root, map[string]string{
-		"AGENTS.md":                 "repository contract\n",
-		"README.md":                 "Machina\n",
-		".github/workflows/ci.yml":  "name: ci\n",
-		"job/cmd/api/main.go":       "package main\n",
+		"AGENTS.md":                  "repository contract\n",
+		"README.md":                  "Machina\n",
+		".github/workflows/ci.yml":   "name: ci\n",
+		"job/cmd/api/main.go":        "package main\n",
 		"job/contracts/platform.yml": "openapi: 3.1.1\n",
 	})
 
@@ -62,8 +62,8 @@ func TestVerifyRepositoryRejectsForgeControlPlaneNamespace(t *testing.T) {
 
 	root := t.TempDir()
 	writeRepoFiles(t, root, map[string]string{
-		"AGENTS.md":                   "contract\n",
-		"README.md":                   "Machina\n",
+		"AGENTS.md":                    "contract\n",
+		"README.md":                    "Machina\n",
 		".forge/private/evidence.json": "{}\n",
 	})
 
