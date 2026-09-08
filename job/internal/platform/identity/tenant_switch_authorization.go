@@ -88,7 +88,7 @@ func (c *TenantSwitchCoordinator) authorizeTenantSwitch(
 		return ErrTenantSwitchAuthorizationUnavailable
 	}
 	if decision.Allowed {
-		if decision.PolicySnapshotHash == "" || len(decision.ReasonCodes) != 0 || decision.DiagnosticRef != "" {
+		if decision.PolicySnapshotHash != policy.SnapshotHash || len(decision.ReasonCodes) != 0 || decision.DiagnosticRef != "" {
 			return ErrTenantSwitchAuthorizationUnavailable
 		}
 		return nil

@@ -141,6 +141,7 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 		if txCtx == nil || isNilTenantSwitchUnit(unit) {
 			return ErrInvalidTenantSwitchCoordinatorConfig
 		}
+		unit = pinTenantSwitchPolicySnapshot(unit)
 
 		presentedHash := HashToken(request.PresentedSessionToken)
 		bind, err := unit.BindTenantSwitchIdempotency(txCtx, sqlcgen.BindTenantSwitchIdempotencyParams{
