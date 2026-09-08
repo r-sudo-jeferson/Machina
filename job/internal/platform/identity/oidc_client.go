@@ -12,7 +12,10 @@ import (
 var (
 	ErrInvalidOIDCClientConfig       = errors.New("invalid OIDC client configuration")
 	ErrMissingOIDCAuthorizationInput = errors.New("missing OIDC authorization input")
+	ErrMissingOIDCTokenExchangeInput = errors.New("missing OIDC token exchange input")
 	ErrOIDCClientNotConfigured       = errors.New("OIDC client is not configured")
+	ErrMissingOIDCIDToken            = errors.New("OIDC token response is missing id_token")
+	ErrInvalidOIDCIdentity           = errors.New("verified OIDC identity is incomplete")
 )
 
 type OIDCClientConfig struct {
@@ -21,6 +24,13 @@ type OIDCClientConfig struct {
 	ClientSecret string
 	RedirectURI  string
 	Scopes       []string
+}
+
+type VerifiedOIDCIdentity struct {
+	Subject string
+	Nonce   string
+	Name    string
+	Email   string
 }
 
 type OIDCClient struct {
@@ -75,6 +85,47 @@ func (c *OIDCClient) AuthorizationURL(state, nonce, pkceChallenge string) (strin
 		oauth2.SetAuthURLParam("code_challenge", pkceChallenge),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
 	), nil
+}
+
+func (c *OIDCClient) ExchangeAndVerify(ctx context.Context, code, pkceVerifier string) (VerifiedOIDCIdentity, error) {
+	if code == "" || pkceVerifier == "" {
+		return VerifiedOIDCIdentity{}, ErrMissingOIDCTokenExchangeInput
+	}
+	if c == nil || c.oauth2Config == nil || c.verifier == nil {
+		return VerifiedOIDCIdentity{}, ErrOIDCClientNotConfigured
+	}
+
+	oauth2Token, err := c.oauth2Config.Exchange(ctx, code, oauth2.VerifierOption(pkceVerifier))
+	if err != nil {
+		return VerifiedOIDCIdentity{}, fmt.Errorf("exchange OIDC authorization code: %w", err)
+	}
+	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
+	if !ok || rawIDToken == "" {
+		return VerifiedOIDCIdentity{}, ErrMissingOIDCIDToken
+	}
+
+	idToken, err := c.verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return VerifiedOIDCIdentity{}, fmt.Errorf("verify OIDC id_token: %w", err)
+	}
+	claims := struct {
+		Subject string `json:"sub"`
+		Name    string `json:"name"`
+		Email   string `json:"email"`
+	}{}
+	if err := idToken.Claims(&claims); err != nil {
+		return VerifiedOIDCIdentity{}, fmt.Errorf("decode verified OIDC claims: %w", err)
+	}
+	if claims.Subject == "" || idToken.Nonce == "" {
+		return VerifiedOIDCIdentity{}, ErrInvalidOIDCIdentity
+	}
+
+	return VerifiedOIDCIdentity{
+		Subject: claims.Subject,
+		Nonce:   idToken.Nonce,
+		Name:    claims.Name,
+		Email:   claims.Email,
+	}, nil
 }
 
 func containsString(values []string, want string) bool {
