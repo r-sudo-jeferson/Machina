@@ -6,8 +6,10 @@ readonly DB_NAME='machina_authz_test'
 readonly MIGRATOR_ROLE='machina_migrator'
 readonly RUNTIME_ROLE='machina_runtime'
 readonly TENANT_ID='00000000-0000-0000-0000-0000000000a1'
+readonly INVALID_POLICY_TENANT_ID='00000000-0000-0000-0000-0000000000b2'
 readonly SUBJECT_ID='10000000-0000-0000-0000-0000000000a1'
 readonly SNAPSHOT_HASH='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+readonly INVALID_POLICY_SNAPSHOT_HASH='dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
 readonly CONTAINER="machina-authz-pg-${GITHUB_RUN_ID:-local}-$$"
 readonly SCHEMA_FIXTURE='services/authz/tests/fixtures/starter-schema.json'
 readonly POLICY_FIXTURE='services/authz/tests/fixtures/starter.cedar'
@@ -69,15 +71,19 @@ schema_json="$(<"$SCHEMA_FIXTURE")"
 cedar_policies="$(<"$POLICY_FIXTURE")"
 docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$DB_NAME" \
   -v tenant_id="$TENANT_ID" \
+  -v invalid_policy_tenant_id="$INVALID_POLICY_TENANT_ID" \
   -v subject_id="$SUBJECT_ID" \
   -v snapshot_hash="$SNAPSHOT_HASH" \
+  -v invalid_policy_snapshot_hash="$INVALID_POLICY_SNAPSHOT_HASH" \
   -v schema_json="$schema_json" \
   -v cedar_policies="$cedar_policies" <<'SQL'
 INSERT INTO iam.subjects (id, external_subject, display_name)
 VALUES (:'subject_id'::uuid, 'oidc-authz-source', 'Authz Source Subject');
 
 INSERT INTO iam.tenants (id, slug, display_name, status)
-VALUES (:'tenant_id'::uuid, 'authz-source', 'Authz Source Tenant', 'active');
+VALUES
+    (:'tenant_id'::uuid, 'authz-source', 'Authz Source Tenant', 'active'),
+    (:'invalid_policy_tenant_id'::uuid, 'authz-invalid-policy', 'Authz Invalid Policy Tenant', 'active');
 
 INSERT INTO authz.policy_snapshots (
     tenant_id,
@@ -94,6 +100,15 @@ INSERT INTO authz.policy_snapshots (
     :'snapshot_hash',
     :'schema_json'::jsonb,
     :'cedar_policies',
+    'active',
+    :'subject_id'::uuid,
+    now()
+), (
+    :'invalid_policy_tenant_id'::uuid,
+    1,
+    :'invalid_policy_snapshot_hash',
+    :'schema_json'::jsonb,
+    'this is not valid cedar policy syntax',
     'active',
     :'subject_id'::uuid,
     now()
