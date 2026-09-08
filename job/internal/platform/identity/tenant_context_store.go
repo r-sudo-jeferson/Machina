@@ -11,11 +11,13 @@ import (
 )
 
 var (
-	ErrTenantContextMismatch    = errors.New("tenant context mismatch")
-	ErrWorkspaceContextMismatch = errors.New("workspace context mismatch")
+	ErrMembershipContextMismatch = errors.New("membership context mismatch")
+	ErrTenantContextMismatch     = errors.New("tenant context mismatch")
+	ErrWorkspaceContextMismatch  = errors.New("workspace context mismatch")
 )
 
 type tenantContextQueries interface {
+	GetMembership(context.Context, sqlcgen.GetMembershipParams) (sqlcgen.IamMembership, error)
 	GetTenant(context.Context, pgtype.UUID) (sqlcgen.IamTenant, error)
 	GetWorkspace(context.Context, sqlcgen.GetWorkspaceParams) (sqlcgen.IamWorkspace, error)
 }
@@ -62,6 +64,9 @@ func (s *TenantContextStore) Load(ctx context.Context, selection ActiveSelection
 	if s == nil || s.scope == nil {
 		return TenantContext{}, errors.New("tenant context store is not configured")
 	}
+	if !selection.Identity.ID.Valid {
+		return TenantContext{}, ErrSessionIdentityMismatch
+	}
 	if !selection.Tenant.TenantID.Valid {
 		return TenantContext{}, ErrMissingActiveTenant
 	}
@@ -72,6 +77,19 @@ func (s *TenantContextStore) Load(ctx context.Context, selection ActiveSelection
 	tenantID := uuidString(selection.Tenant.TenantID)
 	var loaded TenantContext
 	err := s.scope.WithinTenant(ctx, tenantID, func(ctx context.Context, queries tenantContextQueries) error {
+		membership, err := queries.GetMembership(ctx, sqlcgen.GetMembershipParams{
+			TenantID:  selection.Tenant.TenantID,
+			SubjectID: selection.Identity.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if !membership.TenantID.Valid || membership.TenantID != selection.Tenant.TenantID ||
+			!membership.SubjectID.Valid || membership.SubjectID != selection.Identity.ID ||
+			membership.Status != "active" || membership.StarterRole != selection.Tenant.StarterRole {
+			return ErrMembershipContextMismatch
+		}
+
 		tenant, err := queries.GetTenant(ctx, selection.Tenant.TenantID)
 		if err != nil {
 			return err
