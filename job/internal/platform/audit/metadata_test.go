@@ -59,16 +59,76 @@ func TestSafeMetadataRejectsInvalidInputsWithoutEcho(t *testing.T) {
 		name string
 		call func() error
 	}{
-		{name: "invalid tenant", call: func() error { _, err := NewTenantSwitchMetadata(pgtype.UUID{}, validWorkspace, 1); return err }},
-		{name: "invalid workspace", call: func() error { _, err := NewTenantSwitchMetadata(validTenant, pgtype.UUID{}, 1); return err }},
-		{name: "zero generation", call: func() error { _, err := NewTenantSwitchMetadata(validTenant, validWorkspace, 0); return err }},
-		{name: "negative latency", call: func() error { _, err := NewAuthorizationDecisionMetadata("allow", -time.Nanosecond, nil); return err }},
-		{name: "unknown decision", call: func() error { _, err := NewAuthorizationDecisionMetadata(sentinel, time.Millisecond, nil); return err }},
-		{name: "allow with reasons", call: func() error { _, err := NewAuthorizationDecisionMetadata("allow", time.Millisecond, []string{"explicit_forbid"}); return err }},
-		{name: "deny without reasons", call: func() error { _, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, nil); return err }},
-		{name: "unknown reason", call: func() error { _, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, []string{sentinel}); return err }},
-		{name: "duplicate reason", call: func() error { _, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, []string{"explicit_forbid", "explicit_forbid"}); return err }},
-		{name: "too many reasons", call: func() error { _, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, []string{"default_deny", "evaluation_error", "explicit_forbid", "policy_unavailable", "stale_policy_version", "default_deny"}); return err }},
+		{
+			name: "invalid tenant",
+			call: func() error {
+				_, err := NewTenantSwitchMetadata(pgtype.UUID{}, validWorkspace, 1)
+				return err
+			},
+		},
+		{
+			name: "invalid workspace",
+			call: func() error {
+				_, err := NewTenantSwitchMetadata(validTenant, pgtype.UUID{}, 1)
+				return err
+			},
+		},
+		{
+			name: "zero generation",
+			call: func() error {
+				_, err := NewTenantSwitchMetadata(validTenant, validWorkspace, 0)
+				return err
+			},
+		},
+		{
+			name: "negative latency",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata("allow", -time.Nanosecond, nil)
+				return err
+			},
+		},
+		{
+			name: "unknown decision",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata(sentinel, time.Millisecond, nil)
+				return err
+			},
+		},
+		{
+			name: "allow with reasons",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata("allow", time.Millisecond, []string{"explicit_forbid"})
+				return err
+			},
+		},
+		{
+			name: "deny without reasons",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, nil)
+				return err
+			},
+		},
+		{
+			name: "unknown reason",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, []string{sentinel})
+				return err
+			},
+		},
+		{
+			name: "duplicate reason",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, []string{"explicit_forbid", "explicit_forbid"})
+				return err
+			},
+		},
+		{
+			name: "too many reasons",
+			call: func() error {
+				_, err := NewAuthorizationDecisionMetadata("deny", time.Millisecond, []string{"default_deny", "evaluation_error", "explicit_forbid", "policy_unavailable", "stale_policy_version", "default_deny"})
+				return err
+			},
+		},
 	}
 
 	for _, tc := range cases {
