@@ -18,8 +18,10 @@ type Querier interface {
 	GetActiveSession(ctx context.Context, sessionTokenHash []byte) (GetActiveSessionRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (IamMembership, error)
 	GetPreference(ctx context.Context, arg GetPreferenceParams) (IamPreference, error)
+	GetSessionIdentity(ctx context.Context, sessionTokenHash []byte) (GetSessionIdentityRow, error)
 	GetTenant(ctx context.Context, tenantID pgtype.UUID) (IamTenant, error)
 	GetWorkspace(ctx context.Context, arg GetWorkspaceParams) (IamWorkspace, error)
+	ListSessionTenants(ctx context.Context, sessionTokenHash []byte) ([]ListSessionTenantsRow, error)
 	ListWorkspaces(ctx context.Context, tenantID pgtype.UUID) ([]IamWorkspace, error)
 	RevokeSession(ctx context.Context, sessionTokenHash []byte) error
 	UpsertPreference(ctx context.Context, arg UpsertPreferenceParams) (IamPreference, error)
