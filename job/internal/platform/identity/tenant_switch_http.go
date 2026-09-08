@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/r-sudo-jeferson/Machina/job/internal/platform/httpx"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/httpx"
 )
 
 const (
@@ -24,7 +24,7 @@ type tenantSwitchExecutor interface {
 }
 
 type TenantSwitchHTTPHandler struct {
-	switcher      tenantSwitchExecutor
+	switcher     tenantSwitchExecutor
 	maxBodyBytes int64
 }
 
@@ -202,4 +202,3 @@ func writeTenantSwitchProblem(w http.ResponseWriter, status int, code string, co
 	}
 	httpx.WriteProblem(w, problem)
 }
-
