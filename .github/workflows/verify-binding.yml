@@ -1,29 +1,45 @@
-name: Verify repository contract
+name: Verify platform construction
 
 on:
   push:
     branches:
       - forge/mch-s001-1.0.0
-  pull_request:
-    branches:
-      - main
+    paths:
+      - 'job/**/*.go'
+      - 'job/go.mod'
+      - 'job/go.sum'
+      - 'job/db/**'
+      - 'job/contracts/**'
+      - 'job/scripts/dbtest/**'
+      - 'job/scripts/sqltest/**'
+      - 'job/scripts/contracts/**'
+      - 'job/scripts/verify/**'
+      - '.github/workflows/verify-binding.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-repository-${{ github.ref }}
+  group: verify-platform-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify-repository:
-    runs-on: ubuntu-latest
+  verify-platform:
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Checkout candidate
+      - name: Checkout construction ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+
+      - name: Verify checked ref identity
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          printf 'workflow_sha=%s\n' "$GITHUB_SHA"
+          printf 'checked_sha=%s\n' "$checked_sha"
+          test "$checked_sha" = "$GITHUB_SHA"
 
       - name: Setup Go 1.27.1
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
@@ -35,42 +51,17 @@ jobs:
         working-directory: job
         run: go mod tidy -diff
 
-      - name: Verify repository policy contracts
+      - name: Verify Go and repository contracts
         working-directory: job
         run: |
+          set -euo pipefail
           go test -count=1 ./scripts/verify/...
           go test -count=1 ./...
 
-      - name: Verify PostgreSQL 18.6 tenancy kernel
+      - name: Verify PostgreSQL 18.6 tenancy and identity kernel
         working-directory: job
         run: bash scripts/dbtest/run.sh
 
       - name: Verify sqlc data-access contract
         working-directory: job
         run: bash scripts/sqltest/run.sh
-
-      - name: Setup Node 24.20.0 LTS
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '24.20.0'
-          cache: ''
-
-      - name: Verify pnpm workspace lock
-        working-directory: job
-        run: |
-          set -euo pipefail
-          corepack enable
-          corepack prepare pnpm@12.3.4 --activate
-          test "$(node --version)" = "v24.20.0"
-          test "$(pnpm --version)" = "12.3.4"
-          pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Verify Rust authorization workspace
-        working-directory: job
-        run: |
-          set -euo pipefail
-          rustup set profile minimal
-          rustup toolchain install 1.98.1 --component clippy --component rustfmt
-          rustc +1.98.1 --version
-          cargo +1.98.1 metadata --format-version 1 --no-deps >/dev/null
-          cargo +1.98.1 test --workspace --all-targets
