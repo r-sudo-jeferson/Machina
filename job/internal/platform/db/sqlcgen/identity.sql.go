@@ -265,6 +265,59 @@ func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (R
 	return i, err
 }
 
+const switchSessionContext = `-- name: SwitchSessionContext :one
+SELECT
+  switched_session.session_id::uuid AS session_id,
+  switched_session.active_tenant_id::uuid AS active_tenant_id,
+  switched_session.active_workspace_id::uuid AS active_workspace_id,
+  switched_session.expires_at::timestamptz AS expires_at
+FROM iam.switch_session_context(
+  $1::bytea,
+  $2::bytea,
+  $3::bytea,
+  $4::uuid,
+  $5::uuid
+) AS switched_session(
+  session_id,
+  active_tenant_id,
+  active_workspace_id,
+  expires_at
+)
+`
+
+type SwitchSessionContextParams struct {
+	CurrentSessionTokenHash     []byte
+	ReplacementSessionTokenHash []byte
+	ReplacementCsrfTokenHash    []byte
+	TargetTenantID              pgtype.UUID
+	TargetWorkspaceID           pgtype.UUID
+}
+
+type SwitchSessionContextRow struct {
+	SessionID         pgtype.UUID
+	ActiveTenantID    pgtype.UUID
+	ActiveWorkspaceID pgtype.UUID
+	ExpiresAt         pgtype.Timestamptz
+}
+
+func (q *Queries) SwitchSessionContext(ctx context.Context, arg SwitchSessionContextParams) (SwitchSessionContextRow, error) {
+	row := q.db.QueryRow(ctx, switchSessionContext,
+		arg.CurrentSessionTokenHash,
+		arg.ReplacementSessionTokenHash,
+		arg.ReplacementCsrfTokenHash,
+		arg.TargetTenantID,
+		arg.TargetWorkspaceID,
+	)
+	var i SwitchSessionContextRow
+	err := row.Scan(
+		&i.SessionID,
+		&i.ActiveTenantID,
+		&i.ActiveWorkspaceID,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const upsertSubject = `-- name: UpsertSubject :one
 SELECT iam.upsert_subject(
   $1::uuid,
