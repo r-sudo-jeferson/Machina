@@ -171,7 +171,13 @@
 
 - [ ] Write crash-injection tests between mutation, audit insert and outbox publication.
 - [ ] Prove retries do not duplicate effects.
-- [ ] Prove metrics reject raw email/name/prompt/tenant-slug labels.
+- [x] Prove metrics reject raw email/name/prompt/tenant-slug labels.
+  - Evidence (2026-09-08): `OperationMetrics` exposes only the closed `machina.operation` and `machina.outcome` attribute vocabulary, and the tenant-switch HTTP wiring records only `tenant.switch` plus a closed terminal outcome.
+  - RED: test-only SHA `bf097d18bcb06e1b3fdad6fe5a9e1ecf832b21d9`; Go workflow `34265006427` / job `102192043395` failed specifically because `newTenantSwitchHTTPHandler` was still undefined after module/format checks.
+  - Mutation kill: SHA `81ac5f8f38af7a3238985f4f27febce4dde5f533`; Go workflow `34265511792` / job `102193744785` failed exactly because replay was mutated to emit `success`.
+  - Restored implementation SHA `03ae1a913ce8f85a4f2fe6d6749ef44f0e8aa35d`: Go workflow `34265685051` / job `102194331109`, PostgreSQL workflow `34265684912` / job `102194331039`, and formatting workflow `34265684916` all succeeded.
+  - Verification SHA `dac86be3dffff91624cb967d5a8a0a6852d70e74`: Go workflow `34265797509` / job `102194712088` succeeded, including `go mod tidy -diff`, gofmt, `go vet ./...`, repository verification, `go test -count=1 ./...`, and `go test -race -count=1 ./internal/platform/observability ./internal/platform/identity`.
+  - Local execution in the ChatGPT runtime is NOT_VERIFIED because outbound DNS prevented repository cloning; no local PASS is claimed. Exact-SHA GitHub Actions is the execution evidence above.
 - [ ] Reconstruct one allowed and one denied decision from safe metadata.
 - [ ] Evidence: trace IDs linking HTTP→authz→DB→audit/outbox and redaction assertions.
 - [ ] Rollback: additive tables and worker can be disabled without bypassing audit on API mutations.
