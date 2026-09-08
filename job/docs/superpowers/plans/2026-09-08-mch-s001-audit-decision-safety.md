@@ -84,11 +84,11 @@ Create one allow event and one deny event using deterministic UUIDs. Call `Param
 
 Commit only the tests and require exact-SHA Go CI to fail because `StoredDecision`, `DecisionEvidence`, `ReconstructDecision`, and the typed `Event.SafeMetadata` path are absent.
 
-- [ ] **Step 3: Implement recorder validation and reconstruction**
+- [x] **Step 3: Implement recorder validation and reconstruction**
 
 `Params` must call `SafeMetadata.marshalForDecision(event.Decision)` before hashing/persistence. `ReconstructDecision` uses `json.Decoder.DisallowUnknownFields`, verifies complete EOF, validates the same closed reason vocabulary and decision rules, and returns copied reason slices. It must never synthesize or infer actor/tenant/correlation IDs from metadata; those remain first-class fields.
 
-- [ ] **Step 4: Mutation check**
+- [x] **Step 4: Mutation check**
 
 Temporarily bypass either unknown-field rejection or decision/reason validation. Require the focused audit test to fail, restore production code exactly, and rerun the focused package test. Record mutation SHA and failing workflow evidence; never leave the mutant as the safe checkpoint.
 
@@ -106,11 +106,11 @@ Temporarily bypass either unknown-field rejection or decision/reason validation.
 
 Require the audit insert to contain exactly the same three keys and values previously emitted: `target_tenant_id`, `target_workspace_id`, and `session_generation`. Require the outbox payload to remain byte/semantic equivalent to the existing contract and contain no newly introduced fields.
 
-- [ ] **Step 2: Implement the typed audit call site**
+- [x] **Step 2: Implement the typed audit call site**
 
 Replace the audit map with `audit.NewTenantSwitchMetadata`. Construct the existing outbox payload separately so the audit type boundary does not force an outbox API rewrite. Propagate constructor validation failure before any audit/outbox write.
 
-- [ ] **Step 3: Verify non-regression**
+- [x] **Step 3: Verify non-regression**
 
 Require exact-SHA Go CI and the path-selected PostgreSQL workflow to pass. Existing tenant-switch HTTP status/body/ETag/cache/cookie behavior and transaction atomicity must remain unchanged.
 
@@ -123,7 +123,7 @@ Require exact-SHA Go CI and the path-selected PostgreSQL workflow to pass. Exist
 **Interfaces:**
 - Produces durable evidence only for `Reconstruct one allowed and one denied decision from safe metadata`.
 
-- [ ] **Step 1: Run the complete Go gate**
+- [x] **Step 1: Run the complete Go gate**
 
 Require exact-SHA GitHub Actions to execute and pass:
 
@@ -145,3 +145,21 @@ Review only the resulting diff against AC-S001-10, Gate I and pre-mortem risk 15
 - [ ] **Step 3: Update only proven checkboxes**
 
 After exact-SHA CI and independent critique have no unresolved Critical/Important finding, mark only the parent-plan checkbox `Reconstruct one allowed and one denied decision from safe metadata` complete and record the exact implementation/restoration SHA plus Go/PostgreSQL run/job IDs. Keep Task 6 heading, trace-link evidence, signed audit checkpoint, Gate I, GAUNTLET, candidate freeze and promotion open.
+
+## Execution Evidence
+
+- Initial recorder/reconstruction GREEN implementation: SHA `4e006887a33605cd9aa1bf5fed20519eb25ddec2`; Go workflow `34271214382` / job `102212987582` and PostgreSQL workflow `34271214372` / job `102212988227` succeeded.
+- Durable race gate strengthened to include `audit`: SHA `2f6bed1553a3ef70ea42c06c71e3b87658983236`; Go workflow `34271500362` / job `102213937838` succeeded.
+- Mutation kill: SHA `eef5a25528dd00fa251757bd13791161c559ad41`; Go workflow `34271709681` / job `102214622628` failed specifically because decision/reason validation had been bypassed, with `allow_with_deny_reasons`, `deny_without_reasons`, and `unknown_reason` returning success instead of failing closed.
+- Restored production code: SHA `a75d03e47f297b286f0f041361ddecd1ca761997`; Go workflow `34271859967` / job `102215125453` succeeded. Comparison against pre-mutation SHA `2f6bed1553a3ef70ea42c06c71e3b87658983236` had zero file diff, proving exact restoration of the mutated tree.
+- `SafeMetadata.marshalForDecision` encapsulation: SHA `c0f5481ac7e9ff719254d831463c64a6dd9b81fe`; Go workflow `34272139664` / job `102216321707` succeeded.
+- JSONB normalization RED: test-only SHA `a6dd1c9c7222953a921f404af13b6bec1c0f2d7c`; Go workflow `34272424656` / job `102217071381` passed module, gofmt and vet, then failed exactly in `TestReconstructDecisionAcceptsJSONBNormalizedMetadata/allowed_whitespace` and `/denied_reordered`. Root cause: `audit.events.safe_metadata` is PostgreSQL `jsonb`, whose persisted textual representation is not byte-stable.
+- JSONB normalization fix: SHA `531175120389a01d7c0e2741370d622267f1442b`; Go workflow `34272599967` / job `102217669366` succeeded, including the complete Go gate and race for `audit`, `identity`, and `observability`.
+- Real PostgreSQL round-trip test added: SHA `34145f2f28b5932c232392dc99d439ccc7004bf7`; Go workflow `34272922478` / job `102218768521` succeeded, including full repository tests and the race gate. The integration test traverses `Recorder -> sqlc -> audit.events(jsonb) -> safe_metadata::text -> ReconstructDecision` under the non-owner runtime role and transaction-local tenant context.
+- PostgreSQL 18.6 integration wired into the existing dbtest/candidate surfaces by SHAs `f487cddd40b3b2644a07544b4cd5da4e4b58df7a`, `20b25df9f02b9382b325d5a8edfc51263b290b18`, and `53957982e2fe52c5356fe9b8d0442d2af87ffc7e`.
+- Exact final PostgreSQL evidence for the current code/test tree: SHA `53957982e2fe52c5356fe9b8d0442d2af87ffc7e`; PostgreSQL workflow `34273489468` / job `102220702151` succeeded. Logs explicitly show `TestDecisionEvidenceRoundTripPostgreSQL/allowed` PASS and `/denied` PASS, plus `TestTenantSwitchCoordinatorAgainstPostgreSQL` PASS and the complete PostgreSQL 18.6 tenancy/RLS kernel PASS. Runtime-role introspection remained `runtime_role_flags=0:0:0:0`, `owner_violations=0`, `rls_violations=0`, and `tenant_key_violations=0`.
+- Existing tenant-switch assertions predated this audit-safety task and already checked audit/outbox equivalence. Task 3 Step 1 remains unchecked because no new failing tenant-switch assertion was captured for this plan; no retroactive RED is claimed.
+- Task 1 historical RED/verification checkboxes remain unchecked here because this evidence update does not retroactively manufacture execution records that were not captured in this plan.
+- Local execution in the ChatGPT runtime remains `NOT_VERIFIED` because outbound DNS previously prevented repository cloning; no local PASS is claimed. Exact-SHA GitHub Actions evidence is authoritative for the executions listed above.
+- Review-open tension: provider-required root workflow glue was strengthened to include `audit` in the race gate and to execute the existing `/job` PostgreSQL audit round-trip. This is allowed by the repository-level rule permitting provider glue outside `job`, but the literal Global Constraint above says existing root workflow glue is unchanged by this plan. That tension is intentionally not rewritten or waived here and remains an explicit input to the independent critique.
+- Builder self-review is not independent critique. Task 4 Step 2, the parent-plan reconstruction checkbox, Gate I, GAUNTLET `GNT-MCH-S001-001`, candidate freeze, GitLab promotion, and Slice completion remain open.
