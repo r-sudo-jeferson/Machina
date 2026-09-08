@@ -87,7 +87,7 @@ type tenantSwitchUnit interface {
 	GetWorkspace(context.Context, sqlcgen.GetWorkspaceParams) (sqlcgen.IamWorkspace, error)
 	GetActivePolicySnapshot(context.Context, pgtype.UUID) (sqlcgen.GetActivePolicySnapshotRow, error)
 	SetTenantSwitchResponseETag(context.Context, sqlcgen.SetTenantSwitchResponseETagParams) (bool, error)
-	GetTenantSwitchResponseETag(context.Context, sqlcgen.GetTenantSwitchResponseETagParams) (pgtype.Text, error)
+	GetTenantSwitchResponseETag(context.Context, sqlcgen.GetTenantSwitchResponseETagParams) (string, error)
 	InsertAuditEvent(context.Context, sqlcgen.InsertAuditEventParams) error
 	EnqueueOutboxEvent(context.Context, sqlcgen.EnqueueOutboxEventParams) error
 }
@@ -384,7 +384,7 @@ func (c *TenantSwitchCoordinator) replay(
 	if err != nil {
 		return fmt.Errorf("load tenant-switch response etag: %w", err)
 	}
-	if !storedETag.Valid || storedETag.String != strongTenantSwitchETag(canonicalBody) {
+	if storedETag == "" || storedETag != strongTenantSwitchETag(canonicalBody) {
 		return ErrInvalidTenantSwitchOutcome
 	}
 
@@ -402,7 +402,7 @@ func (c *TenantSwitchCoordinator) replay(
 		ResponseStatus:    claim.ResponseStatus,
 		CorrelationID:     claim.CorrelationID,
 		Replay:            true,
-		ETag:              storedETag.String,
+		ETag:              storedETag,
 		ActiveTenantID:    historicalTenantID,
 		ActiveWorkspaceID: historicalWorkspaceID,
 		Generation:        response.Active.SessionGeneration,
@@ -872,9 +872,9 @@ func (u sqlTenantSwitchUnit) SetTenantSwitchResponseETag(ctx context.Context, ar
 	}
 	return u.queries.SetTenantSwitchResponseETag(ctx, arg)
 }
-func (u sqlTenantSwitchUnit) GetTenantSwitchResponseETag(ctx context.Context, arg sqlcgen.GetTenantSwitchResponseETagParams) (pgtype.Text, error) {
+func (u sqlTenantSwitchUnit) GetTenantSwitchResponseETag(ctx context.Context, arg sqlcgen.GetTenantSwitchResponseETagParams) (string, error) {
 	if u.queries == nil {
-		return pgtype.Text{}, ErrInvalidTenantSwitchCoordinatorConfig
+		return "", ErrInvalidTenantSwitchCoordinatorConfig
 	}
 	return u.queries.GetTenantSwitchResponseETag(ctx, arg)
 }
