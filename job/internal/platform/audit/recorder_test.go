@@ -77,7 +77,10 @@ func TestReconstructDecisionFailsClosed(t *testing.T) {
 		name   string
 		mutate func(StoredDecision) StoredDecision
 	}{
-		{name: "unknown field", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":25,"reason_codes":["explicit_forbid"],"raw_prompt":"forbidden"}`); return v }},
+		{name: "unknown field", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"latency_ms":25,"reason_codes":["explicit_forbid"],"raw_prompt":"forbidden"}`)
+			return v
+		}},
 		{name: "malformed json", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":`); return v }},
 		{name: "allow with deny reasons", mutate: func(v StoredDecision) StoredDecision { v.Decision = "allow"; return v }},
 		{name: "deny without reasons", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":25}`); return v }},
@@ -85,9 +88,18 @@ func TestReconstructDecisionFailsClosed(t *testing.T) {
 		{name: "invalid actor", mutate: func(v StoredDecision) StoredDecision { v.ActorSubjectID = pgtype.UUID{}; return v }},
 		{name: "invalid correlation", mutate: func(v StoredDecision) StoredDecision { v.CorrelationID = pgtype.UUID{}; return v }},
 		{name: "invalid policy version", mutate: func(v StoredDecision) StoredDecision { v.PolicyVersion = 0; return v }},
-		{name: "negative latency", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":-1,"reason_codes":["explicit_forbid"]}`); return v }},
-		{name: "overflow latency", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":9223372036854775808,"reason_codes":["explicit_forbid"]}`); return v }},
-		{name: "unknown reason", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":25,"reason_codes":["unbounded-input"]}`); return v }},
+		{name: "negative latency", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"latency_ms":-1,"reason_codes":["explicit_forbid"]}`)
+			return v
+		}},
+		{name: "overflow latency", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"latency_ms":9223372036854775808,"reason_codes":["explicit_forbid"]}`)
+			return v
+		}},
+		{name: "unknown reason", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"latency_ms":25,"reason_codes":["unbounded-input"]}`)
+			return v
+		}},
 	}
 
 	for _, tc := range cases {
