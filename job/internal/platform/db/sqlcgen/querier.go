@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	BindTenantSwitchIdempotency(ctx context.Context, arg BindTenantSwitchIdempotencyParams) (BindTenantSwitchIdempotencyRow, error)
 	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (ClaimIdempotencyKeyRow, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) (bool, error)
 	ConsumeOIDCAuthorizationAttempt(ctx context.Context, stateHash []byte) (ConsumeOIDCAuthorizationAttemptRow, error)
@@ -19,6 +20,7 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (pgtype.UUID, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (IamTenant, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (IamWorkspace, error)
+	FinishTenantSwitchIdempotency(ctx context.Context, arg FinishTenantSwitchIdempotencyParams) (FinishTenantSwitchIdempotencyRow, error)
 	GetActiveSession(ctx context.Context, sessionTokenHash []byte) (GetActiveSessionRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (IamMembership, error)
 	GetPreference(ctx context.Context, arg GetPreferenceParams) (IamPreference, error)

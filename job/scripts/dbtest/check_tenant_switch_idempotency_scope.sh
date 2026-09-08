@@ -161,7 +161,7 @@ expect_failure postgres "BEGIN; UPDATE iam.tenant_switch_idempotency_scopes SET 
 # Target deletion is restricted while the stable mapping exists. The FK action
 # itself is asserted so another unrelated tenant reference cannot mask this
 # invariant.
-expect_equals 'a' "$(query_as postgres "SELECT constraint.confdeltype FROM pg_constraint AS constraint JOIN pg_class AS class ON class.oid=constraint.conrelid JOIN pg_namespace AS namespace ON namespace.oid=class.relnamespace WHERE namespace.nspname='iam' AND class.relname='tenant_switch_idempotency_scopes' AND constraint.contype='f' AND constraint.confrelid='iam.tenants'::regclass")" 'scope target FK does not use restrictive deletion semantics'
+expect_equals 'r' "$(query_as postgres "SELECT constraint.confdeltype FROM pg_constraint AS constraint JOIN pg_class AS class ON class.oid=constraint.conrelid JOIN pg_namespace AS namespace ON namespace.oid=class.relnamespace WHERE namespace.nspname='iam' AND class.relname='tenant_switch_idempotency_scopes' AND constraint.contype='f' AND constraint.confrelid='iam.tenants'::regclass")" 'scope target FK does not use restrictive deletion semantics'
 expect_failure postgres "DELETE FROM iam.tenants WHERE id='${TENANT_B}'" 'tenant deletion bypassed a live tenant-switch mapping'
 expect_equals '1' "$(query_as postgres "SELECT count(*) FROM iam.tenant_switch_idempotency_scopes WHERE tenant_id='${TENANT_B}' AND idempotency_key='${SCOPE_KEY}'")" 'failed target deletion removed the stable mapping'
 
