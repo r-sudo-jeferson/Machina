@@ -1,3 +1,4 @@
+609 job/db/migrations/0015_tenant_switch_idempotency_scope.sql
 BEGIN;
 
 CREATE TABLE iam.tenant_switch_idempotency_scopes (
@@ -75,6 +76,7 @@ AS $$
 DECLARE
     previous_tenant_context text;
     current_generation bigint;
+    current_scope iam.tenant_switch_idempotency_scopes%ROWTYPE;
     expected_receipt_hash text;
     receipt_pair_exists boolean;
 BEGIN
@@ -84,41 +86,54 @@ BEGIN
 
     PERFORM set_config('app.tenant_switch_scope', 'on', true);
 
+    -- A single transaction can insert a scope and then finish it. Constraint
+    -- triggers queue both row events, so the INSERT event's NEW image may be
+    -- stale by commit time. Re-read the current row by its stable key and
+    -- validate the final state instead of trusting that historical image.
+    SELECT scope.*
+    INTO current_scope
+    FROM iam.tenant_switch_idempotency_scopes AS scope
+    WHERE scope.session_id = NEW.session_id
+      AND scope.idempotency_key = NEW.idempotency_key;
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+
     SELECT session.generation
     INTO current_generation
     FROM iam.sessions AS session
-    WHERE session.id = NEW.session_id;
+    WHERE session.id = current_scope.session_id;
 
     IF NOT FOUND
-       OR NEW.result_generation IS NULL
-       OR NEW.result_generation <> NEW.claim_generation + 1
-       OR current_generation <> NEW.result_generation THEN
+       OR current_scope.result_generation IS NULL
+       OR current_scope.result_generation <> current_scope.claim_generation + 1
+       OR current_generation <> current_scope.result_generation THEN
         RAISE EXCEPTION 'tenant-switch scope is not completed at the current session generation'
             USING ERRCODE = '23514';
     END IF;
 
     expected_receipt_hash := encode(
         sha256(convert_to(
-            'tenant.switch.v1' || chr(10) || NEW.session_id::text || chr(10) || NEW.request_hash,
+            'tenant.switch.v1' || chr(10) || current_scope.session_id::text || chr(10) || current_scope.request_hash,
             'UTF8'
         )),
         'hex'
     );
 
     previous_tenant_context := current_setting('app.tenant_id', true);
-    PERFORM set_config('app.tenant_id', NEW.tenant_id::text, true);
+    PERFORM set_config('app.tenant_id', current_scope.tenant_id::text, true);
 
     SELECT EXISTS (
         SELECT 1
         FROM ops.idempotency_keys AS receipt
-        WHERE receipt.tenant_id = NEW.tenant_id
-          AND receipt.idempotency_key = NEW.idempotency_key
+        WHERE receipt.tenant_id = current_scope.tenant_id
+          AND receipt.idempotency_key = current_scope.idempotency_key
           AND receipt.operation = 'tenant.switch.v1'
           AND receipt.request_hash = expected_receipt_hash
           AND receipt.response_status IS NOT NULL
           AND receipt.response_body IS NOT NULL
           AND jsonb_typeof(receipt.response_body) = 'object'
-          AND receipt.expires_at = NEW.expires_at
+          AND receipt.expires_at = current_scope.expires_at
           AND receipt.expires_at > clock_timestamp()
     )
     INTO receipt_pair_exists;
@@ -518,3 +533,78 @@ BEGIN
     END IF;
 
     expected_body_hash := encode(
+        sha256(convert_to(operation_name || chr(10) || lower(scope.tenant_id::text), 'UTF8')),
+        'hex'
+    );
+    IF scope.operation <> operation_name
+       OR scope.request_hash <> p_request_hash
+       OR p_request_hash <> expected_body_hash
+       OR scope.result_generation IS NOT NULL
+       OR locked_session.generation <> scope.claim_generation + 1
+       OR locked_session.active_tenant_id <> scope.tenant_id
+       OR locked_session.active_workspace_id IS NULL THEN
+        RAISE EXCEPTION 'tenant-switch scope cannot be completed by this session generation'
+            USING ERRCODE = '23514';
+    END IF;
+
+    PERFORM set_config('app.tenant_id', scope.tenant_id::text, true);
+    PERFORM 1
+    FROM iam.workspaces AS workspace
+    WHERE workspace.tenant_id = scope.tenant_id
+      AND workspace.id = locked_session.active_workspace_id
+    FOR SHARE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'tenant-switch workspace context is unavailable' USING ERRCODE = '42501';
+    END IF;
+
+    expected_receipt_hash := encode(
+        sha256(convert_to(
+            operation_name || chr(10) || locked_session.id::text || chr(10) || p_request_hash,
+            'UTF8'
+        )),
+        'hex'
+    );
+    SELECT stored_receipt.*
+    INTO receipt
+    FROM ops.idempotency_keys AS stored_receipt
+    WHERE stored_receipt.tenant_id = scope.tenant_id
+      AND stored_receipt.idempotency_key = p_idempotency_key
+    FOR UPDATE;
+    receipt_found := FOUND;
+    IF NOT receipt_found
+       OR receipt.operation <> operation_name
+       OR receipt.request_hash <> expected_receipt_hash
+       OR receipt.response_status IS NULL
+       OR receipt.response_body IS NULL
+       OR jsonb_typeof(receipt.response_body) <> 'object'
+       OR receipt.expires_at <> scope.expires_at
+       OR receipt.expires_at <= clock_timestamp() THEN
+        RAISE EXCEPTION 'tenant-switch scope and receipt pair is invalid'
+            USING ERRCODE = '23514';
+    END IF;
+
+    UPDATE iam.tenant_switch_idempotency_scopes AS mapped_scope
+    SET result_generation = locked_session.generation
+    WHERE mapped_scope.session_id = locked_session.id
+      AND mapped_scope.idempotency_key = p_idempotency_key
+      AND mapped_scope.result_generation IS NULL;
+
+    finished := true;
+    session_id := locked_session.id;
+    result_generation := locked_session.generation;
+    PERFORM set_config('app.tenant_switch_scope', '', true);
+    RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION iam.validate_tenant_switch_idempotency_scope() FROM PUBLIC;
+REVOKE ALL ON FUNCTION iam.bind_tenant_switch_idempotency(bytea, text, text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION iam.finish_tenant_switch_idempotency(bytea, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION iam.bind_tenant_switch_idempotency(bytea, text, text, uuid) TO machina_runtime;
+GRANT EXECUTE ON FUNCTION iam.finish_tenant_switch_idempotency(bytea, text, text) TO machina_runtime;
+
+COMMENT ON TABLE iam.tenant_switch_idempotency_scopes IS 'Identity-owned, session-stable tenant-switch scope. It stores only canonical hashes, target coordinates, generations, and immutable deadlines; browser secrets never enter this table.';
+COMMENT ON FUNCTION iam.bind_tenant_switch_idempotency(bytea, text, text, uuid) IS 'Security-definer binding for tenant.switch.v1. It locks the active session and server-authorized target, pairs a stable session/key mapping with the tenant receipt, and returns only non-secret coordinates and the immutable deadline.';
+COMMENT ON FUNCTION iam.finish_tenant_switch_idempotency(bytea, text, text) IS 'Completes a newly claimed tenant-switch scope only after the rotated session generation and the exact completed tenant receipt are both present.';
+
+COMMIT;
