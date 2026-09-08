@@ -9,6 +9,9 @@ INSERT INTO iam.memberships (tenant_id, subject_id, starter_role, status)
 VALUES ('${TENANT_B}', '${SUBJECT_A}', 'member', 'active');
 SQL
 
+runtime_guc_bypass_count="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.session_context_lookup','on',true); SELECT count(*) FROM iam.memberships; COMMIT;" | tail -n 1)"
+expect_equals '0' "$runtime_guc_bypass_count" 'runtime forged session-context GUC and bypassed tenant RLS'
+
 context_session_id="$(query_as "$RUNTIME_ROLE" "SELECT iam.create_session('${CONTEXT_SESSION}'::uuid, '${SUBJECT_A}'::uuid, decode('${CONTEXT_SESSION_HASH}','hex'), decode('${CONTEXT_CSRF_HASH}','hex'), now() + interval '30 minutes')::text")"
 expect_equals "$CONTEXT_SESSION" "$context_session_id" 'context test session was not created'
 
