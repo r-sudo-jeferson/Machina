@@ -148,5 +148,6 @@ expect_equals '<cleared>' "${pool_lines[-2]}" 'transaction-local tenant context 
 expect_equals '0' "${pool_lines[-1]}" 'same backend connection leaked previous tenant rows after commit'
 
 source scripts/dbtest/check_last_owner.sh
+source scripts/dbtest/check_identity_session_boundary.sh
 
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
