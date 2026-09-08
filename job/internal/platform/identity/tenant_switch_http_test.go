@@ -17,9 +17,9 @@ import (
 
 type recordingTenantSwitchExecutor struct {
 	request TenantSwitchRequest
-	result  TenantSwitchResult
-	err     error
-	calls   int
+	result TenantSwitchResult
+	err    error
+	calls  int
 }
 
 func (e *recordingTenantSwitchExecutor) Switch(_ context.Context, request TenantSwitchRequest) (TenantSwitchResult, error) {
@@ -35,17 +35,7 @@ func tenantSwitchHTTPResponseBody() []byte {
 func tenantSwitchHTTPMiddleware(t *testing.T, next http.Handler) http.Handler {
 	t.Helper()
 	csrfHash := HashToken("csrf-secret")
-	middleware, err := NewSessionHTTPMiddleware(&recordingHTTPSessionLookup{
-		row: sqlcgen.GetActiveSessionRow{
-			ID:          tenantSwitchUUID(1),
-			SubjectID:   tenantSwitchUUID(2),
-			CsrfTokenHash: csrfHash[:],
-			ExpiresAt: pgtype.Timestamptz{
-				Time:  time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC),
-				Valid: true,
-			},
-		},
-	})
+	middleware, err := NewSessionHTTPMiddleware(&recordingHTTPSessionLookup{row: sqlcgen.GetActiveSessionRow{ID: tenantSwitchUUID(1), SubjectID: tenantSwitchUUID(2), CsrfTokenHash: csrfHash[:], ExpiresAt: pgtype.Timestamptz{Time: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC), Valid: true}}})
 	if err != nil {
 		t.Fatalf("NewSessionHTTPMiddleware() error = %v", err)
 	}
@@ -63,25 +53,14 @@ func tenantSwitchHTTPRequest() *http.Request {
 
 func TestTenantSwitchHTTPHandlerSuccessSetsCookiesAndStrongETag(t *testing.T) {
 	t.Parallel()
-
 	body := tenantSwitchHTTPResponseBody()
-	executor := &recordingTenantSwitchExecutor{result: TenantSwitchResult{
-		ResponseBody:   body,
-		ResponseStatus: 200,
-		CorrelationID:  tenantSwitchUUID(9),
-		ETag:           strongTenantSwitchETag(body),
-		SessionToken:   "replacement-session",
-		CSRFToken:      "replacement-csrf",
-		SessionExpiresAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC),
-	}}
+	executor := &recordingTenantSwitchExecutor{result: TenantSwitchResult{ResponseBody: body, ResponseStatus: 200, CorrelationID: tenantSwitchUUID(9), ETag: strongTenantSwitchETag(body), SessionToken: "replacement-session", CSRFToken: "replacement-csrf", SessionExpiresAt: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)}}
 	handler, err := NewTenantSwitchHTTPHandler(executor)
 	if err != nil {
 		t.Fatalf("NewTenantSwitchHTTPHandler() error = %v", err)
 	}
-
 	recorder := httptest.NewRecorder()
 	tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, tenantSwitchHTTPRequest())
-
 	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Header().Get("Content-Type"))
 	}
@@ -101,33 +80,21 @@ func TestTenantSwitchHTTPHandlerSuccessSetsCookiesAndStrongETag(t *testing.T) {
 	if cookies[0].Value != "replacement-session" || cookies[1].Value != "replacement-csrf" {
 		t.Fatalf("replacement cookies = %#v", cookies)
 	}
-	if executor.calls != 1 || executor.request.PresentedSessionToken != "presented-session" ||
-		executor.request.TargetTenantID != tenantSwitchUUID(0xb2) ||
-		executor.request.IdempotencyKey != "tenant-switch-http-key-0001" ||
-		!executor.request.CorrelationID.Valid {
+	if executor.calls != 1 || executor.request.PresentedSessionToken != "presented-session" || executor.request.TargetTenantID != tenantSwitchUUID(0xb2) || executor.request.IdempotencyKey != "tenant-switch-http-key-0001" || !executor.request.CorrelationID.Valid {
 		t.Fatalf("executor request = %#v", executor.request)
 	}
 }
 
 func TestTenantSwitchHTTPHandlerReplayNeverSetsCookies(t *testing.T) {
 	t.Parallel()
-
 	body := tenantSwitchHTTPResponseBody()
-	executor := &recordingTenantSwitchExecutor{result: TenantSwitchResult{
-		ResponseBody:   body,
-		ResponseStatus: 200,
-		CorrelationID:  tenantSwitchUUID(9),
-		Replay:         true,
-		ETag:           strongTenantSwitchETag(body),
-	}}
+	executor := &recordingTenantSwitchExecutor{result: TenantSwitchResult{ResponseBody: body, ResponseStatus: 200, CorrelationID: tenantSwitchUUID(9), Replay: true, ETag: strongTenantSwitchETag(body)}}
 	handler, err := NewTenantSwitchHTTPHandler(executor)
 	if err != nil {
 		t.Fatalf("NewTenantSwitchHTTPHandler() error = %v", err)
 	}
-
 	recorder := httptest.NewRecorder()
 	tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, tenantSwitchHTTPRequest())
-
 	if recorder.Code != http.StatusOK || len(recorder.Result().Cookies()) != 0 {
 		t.Fatalf("replay response = status %d cookies %#v", recorder.Code, recorder.Result().Cookies())
 	}
@@ -138,16 +105,13 @@ func TestTenantSwitchHTTPHandlerReplayNeverSetsCookies(t *testing.T) {
 
 func TestTenantSwitchHTTPHandlerWritesRFC9457ProblemWithoutLeakingCause(t *testing.T) {
 	t.Parallel()
-
 	executor := &recordingTenantSwitchExecutor{err: errors.Join(ErrTenantSwitchScopeConflict, errors.New("database secret detail"))}
 	handler, err := NewTenantSwitchHTTPHandler(executor)
 	if err != nil {
 		t.Fatalf("NewTenantSwitchHTTPHandler() error = %v", err)
 	}
-
 	recorder := httptest.NewRecorder()
 	tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, tenantSwitchHTTPRequest())
-
 	if recorder.Code != http.StatusConflict || recorder.Header().Get("Content-Type") != "application/problem+json" {
 		t.Fatalf("problem response = %d %q", recorder.Code, recorder.Header().Get("Content-Type"))
 	}
@@ -170,7 +134,6 @@ func TestTenantSwitchHTTPHandlerWritesRFC9457ProblemWithoutLeakingCause(t *testi
 
 func TestTenantSwitchHTTPHandlerRejectsMalformedInputBeforeExecutor(t *testing.T) {
 	t.Parallel()
-
 	executor := &recordingTenantSwitchExecutor{}
 	handler, err := NewTenantSwitchHTTPHandler(executor)
 	if err != nil {
@@ -180,7 +143,6 @@ func TestTenantSwitchHTTPHandlerRejectsMalformedInputBeforeExecutor(t *testing.T
 	req.Body = http.NoBody
 	recorder := httptest.NewRecorder()
 	tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, req)
-
 	if recorder.Code != http.StatusBadRequest || executor.calls != 0 {
 		t.Fatalf("malformed input = status %d calls %d", recorder.Code, executor.calls)
 	}
