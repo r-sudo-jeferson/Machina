@@ -12,14 +12,18 @@ import (
 
 type Querier interface {
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (IamMembership, error)
+	CreateSession(ctx context.Context, arg CreateSessionParams) (pgtype.UUID, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (IamTenant, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (IamWorkspace, error)
+	GetActiveSession(ctx context.Context, sessionTokenHash []byte) (GetActiveSessionRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (IamMembership, error)
 	GetPreference(ctx context.Context, arg GetPreferenceParams) (IamPreference, error)
 	GetTenant(ctx context.Context, tenantID pgtype.UUID) (IamTenant, error)
 	GetWorkspace(ctx context.Context, arg GetWorkspaceParams) (IamWorkspace, error)
 	ListWorkspaces(ctx context.Context, tenantID pgtype.UUID) ([]IamWorkspace, error)
+	RevokeSession(ctx context.Context, sessionTokenHash []byte) error
 	UpsertPreference(ctx context.Context, arg UpsertPreferenceParams) (IamPreference, error)
+	UpsertSubject(ctx context.Context, arg UpsertSubjectParams) (pgtype.UUID, error)
 }
 
 var _ Querier = (*Queries)(nil)
