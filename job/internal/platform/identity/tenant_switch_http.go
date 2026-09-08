@@ -7,16 +7,20 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/httpx"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
+	"go.opentelemetry.io/otel"
 )
 
 const (
-	tenantSwitchPath       = "/v1/tenant-switch"
-	defaultTenantSwitchMax = 4 << 10
+	tenantSwitchPath          = "/v1/tenant-switch"
+	defaultTenantSwitchMax    = 4 << 10
+	tenantSwitchHTTPMeterName = "github.com/r-sudo-jeferson/Machina/job/internal/platform/identity"
 )
 
 type tenantSwitchExecutor interface {
@@ -25,6 +29,8 @@ type tenantSwitchExecutor interface {
 
 type TenantSwitchHTTPHandler struct {
 	switcher     tenantSwitchExecutor
+	metrics      *observability.OperationMetrics
+	clock        func() time.Time
 	maxBodyBytes int64
 }
 
@@ -32,11 +38,27 @@ func NewTenantSwitchHTTPHandler(switcher tenantSwitchExecutor) (*TenantSwitchHTT
 	if switcher == nil {
 		return nil, ErrInvalidTenantSwitchCoordinatorConfig
 	}
-	return &TenantSwitchHTTPHandler{switcher: switcher, maxBodyBytes: defaultTenantSwitchMax}, nil
+	metrics, err := observability.NewOperationMetrics(otel.Meter(tenantSwitchHTTPMeterName))
+	if err != nil {
+		return nil, errors.Join(ErrInvalidTenantSwitchCoordinatorConfig, err)
+	}
+	return newTenantSwitchHTTPHandler(switcher, metrics, time.Now)
+}
+
+func newTenantSwitchHTTPHandler(switcher tenantSwitchExecutor, metrics *observability.OperationMetrics, clock func() time.Time) (*TenantSwitchHTTPHandler, error) {
+	if switcher == nil || metrics == nil || clock == nil {
+		return nil, ErrInvalidTenantSwitchCoordinatorConfig
+	}
+	return &TenantSwitchHTTPHandler{
+		switcher:     switcher,
+		metrics:      metrics,
+		clock:        clock,
+		maxBodyBytes: defaultTenantSwitchMax,
+	}, nil
 }
 
 func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.switcher == nil {
+	if h == nil || h.switcher == nil || h.metrics == nil || h.clock == nil {
 		writeTenantSwitchProblem(w, http.StatusServiceUnavailable, "tenant_switch_unavailable", pgtype.UUID{})
 		return
 	}
@@ -80,6 +102,7 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		writeTenantSwitchProblem(w, http.StatusServiceUnavailable, "correlation_unavailable", pgtype.UUID{})
 		return
 	}
+	startedAt := h.clock()
 	result, err := h.switcher.Switch(r.Context(), TenantSwitchRequest{
 		PresentedSessionToken: presentedToken,
 		TargetTenantID:        targetTenant,
@@ -88,13 +111,21 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	})
 	if err != nil {
 		status, code := mapTenantSwitchHTTPError(err)
+		h.recordTenantSwitchMetric(r.Context(), tenantSwitchHTTPMetricOutcome(err, status), startedAt)
 		writeTenantSwitchProblem(w, status, code, correlationID)
 		return
 	}
 	if err := validateTenantSwitchHTTPResult(result); err != nil {
+		h.recordTenantSwitchMetric(r.Context(), observability.OutcomeError, startedAt)
 		writeTenantSwitchProblem(w, http.StatusServiceUnavailable, "tenant_switch_result_invalid", correlationID)
 		return
 	}
+
+	outcome := observability.OutcomeSuccess
+	if result.Replay {
+		outcome = observability.OutcomeReplay
+	}
+	h.recordTenantSwitchMetric(r.Context(), outcome, startedAt)
 
 	httpx.NoStore(w)
 	w.Header().Set("Content-Type", "application/json")
@@ -105,6 +136,27 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(result.ResponseBody)
+}
+
+func (h *TenantSwitchHTTPHandler) recordTenantSwitchMetric(ctx context.Context, outcome observability.Outcome, startedAt time.Time) {
+	elapsed := h.clock().Sub(startedAt)
+	// Metrics are a bounded side channel only. Recording failures must never
+	// alter tenant-switch authorization, status, body, headers, or cookies.
+	_ = h.metrics.Record(ctx, observability.OperationTenantSwitch, outcome, elapsed)
+}
+
+func tenantSwitchHTTPMetricOutcome(err error, status int) observability.Outcome {
+	if status == http.StatusConflict &&
+		(errors.Is(err, ErrTenantSwitchScopeConflict) || errors.Is(err, ErrTenantSwitchInProgress) || errors.Is(err, ErrTenantSwitchStale)) {
+		return observability.OutcomeConflict
+	}
+	if status == http.StatusUnauthorized {
+		var pgError *pgconn.PgError
+		if errors.As(err, &pgError) && pgError.Code == "42501" {
+			return observability.OutcomeDenied
+		}
+	}
+	return observability.OutcomeError
 }
 
 type tenantSwitchHTTPBody struct {
