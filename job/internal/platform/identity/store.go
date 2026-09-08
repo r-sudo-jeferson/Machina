@@ -12,12 +12,14 @@ import (
 var (
 	ErrMissingSessionToken = errors.New("missing session token")
 	ErrMissingCSRFToken    = errors.New("missing CSRF token")
+	ErrSessionTokenReuse   = errors.New("session rotation requires a new session token")
 )
 
 type sessionQueries interface {
 	CreateSession(context.Context, sqlcgen.CreateSessionParams) (pgtype.UUID, error)
 	GetActiveSession(context.Context, []byte) (sqlcgen.GetActiveSessionRow, error)
 	RevokeSession(context.Context, []byte) error
+	RotateSession(context.Context, sqlcgen.RotateSessionParams) (sqlcgen.RotateSessionRow, error)
 }
 
 type SessionStore struct {
@@ -74,4 +76,33 @@ func (s *SessionStore) Revoke(ctx context.Context, presentedSessionToken string)
 
 	sessionHash := HashToken(presentedSessionToken)
 	return s.queries.RevokeSession(ctx, sessionHash[:])
+}
+
+func (s *SessionStore) Rotate(
+	ctx context.Context,
+	presentedSessionToken string,
+	replacementSessionToken string,
+	replacementCSRFToken string,
+) (sqlcgen.RotateSessionRow, error) {
+	if presentedSessionToken == "" || replacementSessionToken == "" {
+		return sqlcgen.RotateSessionRow{}, ErrMissingSessionToken
+	}
+	if replacementCSRFToken == "" {
+		return sqlcgen.RotateSessionRow{}, ErrMissingCSRFToken
+	}
+	if presentedSessionToken == replacementSessionToken {
+		return sqlcgen.RotateSessionRow{}, ErrSessionTokenReuse
+	}
+	if replacementSessionToken == replacementCSRFToken {
+		return sqlcgen.RotateSessionRow{}, ErrSessionSecretCollision
+	}
+
+	presentedHash := HashToken(presentedSessionToken)
+	replacementHash := HashToken(replacementSessionToken)
+	replacementCSRFHash := HashToken(replacementCSRFToken)
+	return s.queries.RotateSession(ctx, sqlcgen.RotateSessionParams{
+		SessionTokenHash:    presentedHash[:],
+		NewSessionTokenHash: replacementHash[:],
+		NewCsrfTokenHash:    replacementCSRFHash[:],
+	})
 }
