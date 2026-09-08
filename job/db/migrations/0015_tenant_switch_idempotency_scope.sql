@@ -116,6 +116,10 @@ BEGIN
     WHERE scope.session_id = NEW.session_id
       AND scope.idempotency_key = NEW.idempotency_key;
     IF NOT FOUND THEN
+        -- The row may have been inserted and deleted before the deferred
+        -- trigger fires. Do not leave the private capability enabled even in
+        -- this no-op validation path.
+        PERFORM set_config('app.tenant_switch_scope', '', true);
         RETURN NEW;
     END IF;
 

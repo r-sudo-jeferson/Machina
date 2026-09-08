@@ -108,7 +108,7 @@ func validTenantSwitchBindRow() sqlcgen.BindTenantSwitchIdempotencyRow {
 		ActiveWorkspaceID: tenantSwitchUUID(4),
 		SessionExpiresAt:  pgtype.Timestamptz{Time: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC), Valid: true},
 		ReceiptExpiresAt:  pgtype.Timestamptz{Time: time.Date(2026, 9, 9, 11, 0, 0, 0, time.UTC), Valid: true},
-		ReceiptHash:       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		ReceiptHash:       tenantSwitchReceiptHash(tenantSwitchUUID(1), tenantSwitchRequestHash(tenantSwitchUUID(2))),
 	}
 }
 
@@ -156,7 +156,7 @@ func TestTenantSwitchCoordinatorClaimsMutatesCompletesAndPublishesOnlyAfterCommi
 	if got.Replay {
 		t.Fatal("claimed mutation was reported as replay")
 	}
-	if got.ActiveTenantID != unit.bindRow.ActiveTenantID || got.ActiveWorkspaceID != unit.bindRow.ActiveWorkspaceID || got.Generation != unit.finishRow.ResultGeneration || !got.SessionExpiresAt.Equal(unit.switchRow.ExpiresAt.Time) {
+	if got.ResponseStatus != 200 || got.ActiveTenantID != unit.bindRow.ActiveTenantID || got.ActiveWorkspaceID != unit.bindRow.ActiveWorkspaceID || got.Generation != unit.finishRow.ResultGeneration || !got.SessionExpiresAt.Equal(unit.switchRow.ExpiresAt.Time) {
 		t.Fatalf("result context = %#v", got)
 	}
 	if got.SessionToken == "" || got.CSRFToken == "" || got.SessionToken == got.CSRFToken {
@@ -202,7 +202,7 @@ func TestTenantSwitchCoordinatorReplayDoesNotGenerateOrRotate(t *testing.T) {
 	if !got.Replay || got.SessionToken != "" || got.CSRFToken != "" {
 		t.Fatalf("replay result leaked mutation/cookies = %#v", got)
 	}
-	if got.CorrelationID != validTenantSwitchRequest().CorrelationID || got.Generation != 8 || got.ActiveTenantID != unit.bindRow.ActiveTenantID || got.ActiveWorkspaceID != unit.bindRow.ActiveWorkspaceID {
+	if got.ResponseStatus != 200 || got.CorrelationID != validTenantSwitchRequest().CorrelationID || got.Generation != 8 || got.ActiveTenantID != unit.bindRow.ActiveTenantID || got.ActiveWorkspaceID != unit.bindRow.ActiveWorkspaceID {
 		t.Fatalf("replay result = %#v", got)
 	}
 	if unit.switchCalls != 0 || unit.completeCalls != 0 || unit.finishCalls != 0 {
@@ -240,6 +240,32 @@ func TestTenantSwitchCoordinatorMapsScopeStatesWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestTenantSwitchCoordinatorMapsGenericClaimConflictsWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	for _, stateErr := range []struct {
+		state string
+		want  error
+	}{
+		{state: "conflict", want: ErrTenantSwitchScopeConflict},
+		{state: "in_progress", want: ErrTenantSwitchInProgress},
+	} {
+		t.Run(stateErr.state, func(t *testing.T) {
+			t.Parallel()
+			unit := claimedTenantSwitchUnit()
+			unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{ClaimState: stateErr.state, CorrelationID: tenantSwitchUUID(9)}
+			coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
+			got, err := coordinator.Switch(context.Background(), validTenantSwitchRequest())
+			if !errors.Is(err, stateErr.want) {
+				t.Fatalf("Switch() error = %v, want errors.Is(_, %v)", err, stateErr.want)
+			}
+			if !reflect.DeepEqual(got, TenantSwitchResult{}) || unit.switchCalls != 0 || unit.completeCalls != 0 || unit.finishCalls != 0 {
+				t.Fatalf("generic claim state mutated or leaked result: result=%#v calls=%d/%d/%d", got, unit.switchCalls, unit.completeCalls, unit.finishCalls)
+			}
+		})
+	}
+}
+
 func TestTenantSwitchCoordinatorRejectsInvalidScopeAndMalformedReplayOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -258,6 +284,9 @@ func TestTenantSwitchCoordinatorRejectsInvalidScopeAndMalformedReplayOutcome(t *
 	}{
 		{name: "missing session", fn: func(row *sqlcgen.BindTenantSwitchIdempotencyRow) { row.SessionID = pgtype.UUID{} }},
 		{name: "missing receipt hash", fn: func(row *sqlcgen.BindTenantSwitchIdempotencyRow) { row.ReceiptHash = "" }},
+		{name: "wrong receipt hash", fn: func(row *sqlcgen.BindTenantSwitchIdempotencyRow) {
+			row.ReceiptHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+		}},
 		{name: "receipt after session", fn: func(row *sqlcgen.BindTenantSwitchIdempotencyRow) {
 			row.ReceiptExpiresAt.Time = row.SessionExpiresAt.Time.Add(time.Minute)
 		}},
@@ -290,6 +319,43 @@ func TestTenantSwitchCoordinatorRejectsInvalidScopeAndMalformedReplayOutcome(t *
 		}
 		if unit.switchCalls != 0 || unit.completeCalls != 0 || unit.finishCalls != 0 {
 			t.Fatal("malformed replay outcome reached mutation boundary")
+		}
+	})
+
+	t.Run("replay status is immutable success", func(t *testing.T) {
+		unit := claimedTenantSwitchUnit()
+		unit.bindRow.MappingState = "replay"
+		unit.bindRow.Generation++
+		unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
+			ClaimState:     "replay",
+			ResponseStatus: 201,
+			ResponseBody:   []byte(`{"active_tenant_id":"00000000-0000-0000-0000-000000000002","active_workspace_id":"00000000-0000-0000-0000-000000000004","session_generation":8,"session_expires_at":"2026-09-09T12:00:00Z"}`),
+			CorrelationID:  validTenantSwitchRequest().CorrelationID,
+		}
+		coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
+		if _, err := coordinator.Switch(context.Background(), validTenantSwitchRequest()); !errors.Is(err, ErrInvalidTenantSwitchPair) {
+			t.Fatalf("Switch() error = %v, want ErrInvalidTenantSwitchPair", err)
+		}
+	})
+
+	t.Run("historical workspace is not replaced by a fresh selection", func(t *testing.T) {
+		unit := claimedTenantSwitchUnit()
+		unit.bindRow.MappingState = "replay"
+		unit.bindRow.Generation++
+		unit.bindRow.ActiveWorkspaceID = tenantSwitchUUID(5)
+		unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
+			ClaimState:     "replay",
+			ResponseStatus: 200,
+			ResponseBody:   []byte(`{"active_tenant_id":"00000000-0000-0000-0000-000000000002","active_workspace_id":"00000000-0000-0000-0000-000000000004","session_generation":8,"session_expires_at":"2026-09-09T12:00:00Z"}`),
+			CorrelationID:  validTenantSwitchRequest().CorrelationID,
+		}
+		coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
+		got, err := coordinator.Switch(context.Background(), validTenantSwitchRequest())
+		if err != nil {
+			t.Fatalf("Switch() historical replay error = %v", err)
+		}
+		if !got.Replay || got.ActiveWorkspaceID != tenantSwitchUUID(4) {
+			t.Fatalf("historical workspace was not preserved: %#v", got)
 		}
 	})
 }
@@ -352,19 +418,13 @@ func TestTenantSwitchCoordinatorTreatsCommitUncertaintyAsReauthenticationBoundar
 	t.Parallel()
 
 	unit := claimedTenantSwitchUnit()
-	coordinator := newRecordingTenantSwitchCoordinator(unit, db.ErrTransactionCommit)
+	coordinator, coordinatorErr := newTenantSwitchCoordinator(func(ctx context.Context, fn func(context.Context, tenantSwitchUnit) error) error {
+		if err := fn(ctx, unit); err != nil {
+			return err
+		}
+		return db.ErrTransactionCommit
+	})
+	if coordinatorErr != nil {
+		t.Fatalf("newTenantSwitchCoordinator() error = %v", coordinatorErr)
+	}
 	got, err := coordinator.Switch(context.Background(), validTenantSwitchRequest())
-	if !errors.Is(err, ErrUncertainTenantSwitchCommit) || !errors.Is(err, db.ErrTransactionCommit) {
-		t.Fatalf("Switch() error = %v, want uncertain commit and underlying commit marker", err)
-	}
-	if !reflect.DeepEqual(got, TenantSwitchResult{}) {
-		t.Fatalf("uncertain commit returned secrets/result = %#v", got)
-	}
-}
-
-func containsSecret(body []byte, secret string) bool {
-	if secret == "" {
-		return false
-	}
-	return strings.Contains(string(body), secret)
-}

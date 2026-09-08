@@ -53,6 +53,7 @@ type TenantSwitchOutcome struct {
 type TenantSwitchResult struct {
 	Outcome           TenantSwitchOutcome
 	ResponseBody      []byte
+	ResponseStatus    int
 	CorrelationID     pgtype.UUID
 	Replay            bool
 	ActiveTenantID    pgtype.UUID
@@ -137,15 +138,15 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 		if err != nil {
 			return fmt.Errorf("bind tenant-switch idempotency scope: %w", err)
 		}
-		if err := validateTenantSwitchBindRow(bind, request.TargetTenantID); err != nil {
+		if err := validateTenantSwitchBindRow(bind, request.TargetTenantID, requestHash); err != nil {
 			return err
 		}
 
 		switch bind.MappingState {
 		case "claimed":
-			return c.claimAndSwitch(txCtx, unit, request, requestHash, bind, &pending)
+			return c.claimAndSwitch(txCtx, unit, request, bind, &pending)
 		case "replay":
-			return c.replay(txCtx, unit, request, requestHash, bind, &pending)
+			return c.replay(txCtx, unit, request, bind, &pending)
 		case "conflict":
 			return ErrTenantSwitchScopeConflict
 		case "in_progress":
@@ -175,7 +176,6 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	ctx context.Context,
 	unit tenantSwitchUnit,
 	request TenantSwitchRequest,
-	requestHash string,
 	bind sqlcgen.BindTenantSwitchIdempotencyRow,
 	pending *TenantSwitchResult,
 ) error {
@@ -193,7 +193,16 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	if err != nil {
 		return fmt.Errorf("claim tenant-switch receipt: %w", err)
 	}
-	if claim.State != idempotency.StateClaimed || claim.CorrelationID != request.CorrelationID {
+	switch claim.State {
+	case idempotency.StateClaimed:
+		if claim.CorrelationID != request.CorrelationID {
+			return ErrInvalidTenantSwitchPair
+		}
+	case idempotency.StateConflict:
+		return ErrTenantSwitchScopeConflict
+	case idempotency.StateInProgress:
+		return ErrTenantSwitchInProgress
+	default:
 		return ErrInvalidTenantSwitchPair
 	}
 
@@ -245,6 +254,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	*pending = TenantSwitchResult{
 		Outcome:           outcome,
 		ResponseBody:      append([]byte(nil), responseBody...),
+		ResponseStatus:    200,
 		CorrelationID:     request.CorrelationID,
 		ActiveTenantID:    switched.ActiveTenantID,
 		ActiveWorkspaceID: switched.ActiveWorkspaceID,
@@ -253,7 +263,6 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		SessionToken:      switched.SessionToken,
 		CSRFToken:         switched.CSRFToken,
 	}
-	_ = requestHash // the database binder already verified the canonical body hash.
 	return nil
 }
 
@@ -261,7 +270,6 @@ func (c *TenantSwitchCoordinator) replay(
 	ctx context.Context,
 	unit tenantSwitchUnit,
 	request TenantSwitchRequest,
-	requestHash string,
 	bind sqlcgen.BindTenantSwitchIdempotencyRow,
 	pending *TenantSwitchResult,
 ) error {
@@ -279,7 +287,7 @@ func (c *TenantSwitchCoordinator) replay(
 	if err != nil {
 		return fmt.Errorf("read tenant-switch replay receipt: %w", err)
 	}
-	if claim.State != idempotency.StateReplay {
+	if claim.State != idempotency.StateReplay || claim.ResponseStatus != 200 {
 		return ErrInvalidTenantSwitchPair
 	}
 
@@ -288,23 +296,30 @@ func (c *TenantSwitchCoordinator) replay(
 		return err
 	}
 	if outcome.ActiveTenantID != uuidText(bind.ActiveTenantID) ||
-		outcome.ActiveWorkspaceID != uuidText(bind.ActiveWorkspaceID) ||
 		outcome.SessionGeneration != bind.Generation ||
 		!outcome.SessionExpiresAt.Equal(bind.SessionExpiresAt.Time.UTC()) {
+		return ErrInvalidTenantSwitchOutcome
+	}
+	historicalTenantID, ok := parseUUIDText(outcome.ActiveTenantID)
+	if !ok {
+		return ErrInvalidTenantSwitchOutcome
+	}
+	historicalWorkspaceID, ok := parseUUIDText(outcome.ActiveWorkspaceID)
+	if !ok {
 		return ErrInvalidTenantSwitchOutcome
 	}
 
 	*pending = TenantSwitchResult{
 		Outcome:           outcome,
 		ResponseBody:      append([]byte(nil), claim.ResponseBody...),
+		ResponseStatus:    claim.ResponseStatus,
 		CorrelationID:     claim.CorrelationID,
 		Replay:            true,
-		ActiveTenantID:    bind.ActiveTenantID,
-		ActiveWorkspaceID: bind.ActiveWorkspaceID,
+		ActiveTenantID:    historicalTenantID,
+		ActiveWorkspaceID: historicalWorkspaceID,
 		Generation:        outcome.SessionGeneration,
 		SessionExpiresAt:  outcome.SessionExpiresAt,
 	}
-	_ = requestHash // the database binder already verified the canonical body hash.
 	return nil
 }
 
@@ -316,11 +331,13 @@ func validateTenantSwitchRequest(request TenantSwitchRequest) error {
 	return nil
 }
 
-func validateTenantSwitchBindRow(row sqlcgen.BindTenantSwitchIdempotencyRow, target pgtype.UUID) error {
+func validateTenantSwitchBindRow(row sqlcgen.BindTenantSwitchIdempotencyRow, target pgtype.UUID, requestHash string) error {
+	expectedReceiptHash := tenantSwitchReceiptHash(row.SessionID, requestHash)
 	if !row.SessionID.Valid || !row.ActiveTenantID.Valid || !row.ActiveWorkspaceID.Valid ||
 		!row.SessionExpiresAt.Valid || !row.ReceiptExpiresAt.Valid ||
 		row.Generation <= 0 || !validTenantSwitchRequestHash(row.ReceiptHash) ||
-		row.ActiveTenantID != target || row.ReceiptExpiresAt.Time.IsZero() || row.SessionExpiresAt.Time.IsZero() ||
+		row.ReceiptHash != expectedReceiptHash || row.ActiveTenantID != target ||
+		row.ReceiptExpiresAt.Time.IsZero() || row.SessionExpiresAt.Time.IsZero() ||
 		row.ReceiptExpiresAt.Time.After(row.SessionExpiresAt.Time) {
 		return ErrInvalidTenantSwitchScope
 	}
@@ -353,9 +370,28 @@ func tenantSwitchRequestHash(target pgtype.UUID) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func tenantSwitchReceiptHash(sessionID pgtype.UUID, requestHash string) string {
+	sum := sha256.Sum256([]byte(TenantSwitchOperation + "\n" + uuidText(sessionID) + "\n" + requestHash))
+	return hex.EncodeToString(sum[:])
+}
+
 func uuidText(value pgtype.UUID) string {
 	encoded := hex.EncodeToString(value.Bytes[:])
 	return encoded[:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:]
+}
+
+func parseUUIDText(value string) (pgtype.UUID, bool) {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return pgtype.UUID{}, false
+	}
+	decoded, err := hex.DecodeString(value[:8] + value[9:13] + value[14:18] + value[19:23] + value[24:])
+	if err != nil || len(decoded) != 16 {
+		return pgtype.UUID{}, false
+	}
+	var bytes [16]byte
+	copy(bytes[:], decoded)
+	parsed := pgtype.UUID{Bytes: bytes, Valid: true}
+	return parsed, uuidText(parsed) == value
 }
 
 func marshalTenantSwitchOutcome(outcome TenantSwitchOutcome) ([]byte, error) {

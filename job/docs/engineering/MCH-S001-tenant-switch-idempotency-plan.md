@@ -26,7 +26,7 @@
 
 **Produces:** `(*Transactor).WithinUnscoped(context.Context, func(context.Context, *sqlcgen.Queries) error) error`; typed `ErrTransactionCommit` preserving the underlying database error.
 
-- [ ] Write tests using the package's `recordingTx`, extended only as needed in the new test file. Seed an inherited tenant value; require a local clear before the callback; verify callback failure, context-clear failure, commit failure, cancellation-independent rollback, nil config, nil callback, and begin failure.
+- [x] Write tests using the package's `recordingTx`, extended only as needed in the new test file. Seed an inherited tenant value; require a local clear before the callback; verify callback failure, context-clear failure, commit failure, cancellation-independent rollback, nil config, nil callback, and begin failure.
 
 ```go
 err := transactor.WithinUnscoped(ctx, func(ctx context.Context, q *sqlcgen.Queries) error {
@@ -40,8 +40,8 @@ if !errors.Is(err, callbackErr) || !tx.rolledBack || tx.committed {
 }
 ```
 
-- [ ] Run `go test -count=1 ./internal/platform/db`; observe missing-method RED.
-- [ ] Implement by sharing the existing begin/callback/commit/rollback lifecycle while preserving `WithinTenant`'s UUID cast and validation. The unscoped setup statement has no caller parameters.
+- [x] Run `go test -count=1 ./internal/platform/db`; observe missing-method RED.
+- [x] Implement by sharing the existing begin/callback/commit/rollback lifecycle while preserving `WithinTenant`'s UUID cast and validation. The unscoped setup statement has no caller parameters.
 
 ```go
 if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id', '', true)"); err != nil {
@@ -51,7 +51,7 @@ if _, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id', '', true)"); err !
 return fmt.Errorf("%w: %w", ErrTransactionCommit, err)
 ```
 
-- [ ] Run db race tests, full Go tests, vet, and repository guards; commit the tested change and observe the exact GitHub run.
+- [x] Run db race tests, full Go tests, vet, and repository guards; commit the tested change and observe the exact GitHub run. Test-only `1bcb79d…`; implementation `48dbd94…`; Go run `34223902238` passed; local `go test -race`, `go vet`, and `gofmt` passed.
 
 ## Task 2: Session generation and expiry after lock waits
 
@@ -60,7 +60,7 @@ return fmt.Errorf("%w: %w", ErrTransactionCommit, err)
 **Consumes:** existing `iam.rotate_session` and `iam.switch_session_context`.
 **Produces:** internal monotonic `iam.sessions.generation bigint`; same existing function signatures and result shapes, so prior callers remain compatible. The new scope binder reads the generation from the locked session without exposing credential hashes.
 
-- [ ] Add real runtime-role tests before adding the migration. Assert generation starts at 1, successful rotation/switch increments exactly once, failed switches and rollback preserve generation, old tokens stay inactive, and a lock wait crossing absolute expiry denies mutation.
+- [x] Add real runtime-role tests before adding the migration. Assert generation starts at 1, successful rotation/switch increments exactly once, failed switches and rollback preserve generation, old tokens stay inactive, and a lock wait crossing absolute expiry denies mutation.
 
 ```sql
 SELECT generation FROM iam.sessions WHERE id = :'session_id';
@@ -70,9 +70,9 @@ ROLLBACK;
 -- The migration-owner/superuser observation must equal the original generation.
 ```
 
-- [ ] Publish the test-only commit, require PostgreSQL RED for missing generation, then add an additive migration. Use a `BEFORE UPDATE` trigger for generation changes on credential/context changes so every mutation path increments it. Reject manual generation changes without a corresponding credential/context change and require finite future session expiry after lock acquisition.
-- [ ] Replace the two security-definer function bodies without changing their return types. Recheck session expiry using `clock_timestamp()` after row locking; retain all input validation. In tenant switch, lock tenant then membership then workspace for shared access so revocation/suspension cannot race the authorized mutation.
-- [ ] Run unchanged db tests plus new tests, sqlc zero-diff, and Go checks. The trigger adds no generated-query result fields and avoids return-type compatibility changes.
+- [x] Publish the test-only commit, require PostgreSQL RED for missing generation, then add an additive migration. Use a `BEFORE UPDATE` trigger for generation changes on credential/context changes so every mutation path increments it. Reject manual generation changes without a corresponding credential/context change and require finite future session expiry after lock acquisition. Test-only `e2ea952…` RED run `34223528855`; implementation included in `48dbd94…`.
+- [x] Replace the two security-definer function bodies without changing their return types. Recheck session expiry using `clock_timestamp()` after row locking; retain all input validation. In tenant switch, lock tenant then membership then workspace for shared access so revocation/suspension cannot race the authorized mutation. Additional lock-wait coverage was added after independent critique.
+- [x] Run unchanged db tests plus new tests, sqlc zero-diff, and Go checks. The trigger adds no generated-query result fields and avoids return-type compatibility changes. PostgreSQL run `102078701163` passed; sqlc run `34230219818` passed; Go run `34229977447` passed; final lock coverage is in `15d91f6…`.
 
 ## Task 3: Stable session/key scope and receipt consistency
 
@@ -80,10 +80,10 @@ ROLLBACK;
 
 **Produces:** `iam.bind_tenant_switch_idempotency(current_hash bytea, key text, request_hash text, target uuid)` returning mapping state, session ID, generation, selected workspace, session expiry, and receipt expiry; `iam.finish_tenant_switch_idempotency(current_hash bytea, key text, request_hash text)` verifying completed tenant receipt and recording current generation. Operation is fixed server-side to `tenant.switch.v1`.
 
-- [ ] Write runtime-role tests for no initial tenant, same key/changed target conflict, revoked membership, suspended tenant, active-session proof, no CRUD, RLS, deadline mismatch, no refresh, foreign-key deletion protection, and generation invalidation. Publish RED before the migration.
-- [ ] Implement binder under the active-session lock. Clear capability settings on return; establish target tenant only after authorization. Bind deadline to `least(clock_timestamp() + interval '24 hours', session.expires_at)`; reuse exactly the stored deadline. Check the old mapping's paired receipt under its recorded tenant before allowing expired-target rebind. Do not expose unrelated receipt contents.
-- [ ] Verify the receipt in the security-definer boundary as well as the coordinator. Pair state and expiry are checked before returning an existing scope and again during finish. A deferred constraint trigger rejects committing an incomplete new scope or a scope whose completed receipt/deadline does not match.
-- [ ] Generate sqlc with the repository-pinned binary and require zero-diff on CI. Keep narrow explicit column lists.
+- [x] Write runtime-role tests for no initial tenant, same key/changed target conflict, revoked membership, suspended tenant, active-session proof, no CRUD, RLS, deadline mismatch, no refresh, foreign-key deletion protection, and generation invalidation. Publish RED before the migration. RED run `34230661400` on `b671f26…`.
+- [x] Implement binder under the active-session lock. Clear capability settings on return; establish target tenant only after authorization. Bind deadline to `least(clock_timestamp() + interval '24 hours', session.expires_at)`; reuse exactly the stored deadline. Check the old mapping's paired receipt under its recorded tenant before allowing expired-target rebind. Do not expose unrelated receipt contents.
+- [x] Verify the receipt in the security-definer boundary as well as the coordinator. Pair state and expiry are checked before returning an existing scope and again during finish. A deferred constraint trigger rejects committing an incomplete new scope or a scope whose completed receipt/deadline does not match. The trigger rereads the final stable row so insert-plus-finish transactions validate correctly.
+- [x] Generate sqlc with the repository-pinned binary and require zero-diff on CI. Keep narrow explicit column lists. Pinned sqlc `1.31.1` local zero-diff and CI run `34230219818` passed.
 
 ```text
 bodyHash = sha256("tenant.switch.v1\n" + canonicalLowercaseTenantUUID)
@@ -99,7 +99,7 @@ every other pair -> rollback
 
 **Produces:** a result with the immutable non-secret outcome, original correlation, replay flag, and cookie material only for a newly committed switch. The coordinator uses `idempotency.NewStore(q)` and `NewSessionContextSwitchService(NewSessionStore(q))` inside the same callback.
 
-- [ ] Write tests for claimed/replay/conflict/in-progress/invalid scope, malformed outcome, generation mismatch, key/hash validation, callback rollback and uncertain commit. Token generation is forbidden on replay; no result with secrets may escape a failed transaction.
+- [x] Write tests for claimed/replay/conflict/in-progress/invalid scope, malformed outcome, generation mismatch, key/hash validation, callback rollback and uncertain commit. Token generation is forbidden on replay; no result with secrets may escape a failed transaction. Test-only RED `ab9149a…`; the initial Go workflow failed at `go vet` because the coordinator types were intentionally absent.
 
 ```go
 var pending SwitchResult
@@ -111,8 +111,8 @@ if err != nil { return SwitchResult{}, err }
 return pending, nil
 ```
 
-- [ ] Observe RED, implement those states, then run identity/idempotency/db race tests and full Go workflow.
-- [ ] Add real concurrency tests: two old-cookie requests yield one commit and one unauthorized waiter; current-cookie retry does not rotate; later generation invalidates the older key.
+- [x] Observe RED, implement those states, then run identity/idempotency/db race tests and full Go workflow. Implementation `3bfcfc4…`; Go workflow `34233381025` passed, including formatting, vet, repository contracts, and all Go tests.
+- [x] Add real concurrency tests: two old-cookie requests yield one commit and one unauthorized waiter; current-cookie retry does not rotate; later generation invalidates the older key. The PostgreSQL workflow `34234473771` / job `102088528305` passed against PostgreSQL 18.6, including the lock-wait evidence and final kernel checks.
 
 ## Task 5: HTTP response, audit/outbox, and full integration
 
@@ -125,4 +125,4 @@ return pending, nil
 
 ## Execution record
 
-No task is complete merely because its files exist. Record test-only and implementation commits and exact workflow results when each task closes. Continue with the existing parent Slice plan after this boundary; no candidate freeze or promotion precedes the real GAUNTLET.
+Tasks 1–4 are implemented and verified on the construction branch through candidate `714b22056d83dedabc8f51375e4ff34d8b3494ff`; the branch remains `IN_PROGRESS` because the HTTP response/audit/outbox integration, GAUNTLET, candidate freeze, and exact GitLab promotion are still pending.
