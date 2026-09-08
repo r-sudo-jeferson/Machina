@@ -45,7 +45,11 @@ jobs:
         working-directory: job
         run: |
           set -euo pipefail
-          test -z "$(gofmt -l .)"
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'unformatted Go files:\n%s\n' "$unformatted"
+            exit 1
+          fi
           go mod tidy -diff
           go vet ./...
           go test -count=1 ./...
