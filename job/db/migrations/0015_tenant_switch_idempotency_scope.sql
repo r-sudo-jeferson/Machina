@@ -65,6 +65,27 @@ USING (
 )
 WITH CHECK (false);
 
+CREATE POLICY tenant_switch_scope_migrator_read ON iam.tenants
+FOR SELECT TO machina_migrator
+USING (
+    current_user = 'machina_migrator'
+    AND current_setting('app.tenant_switch_scope', true) = 'on'
+);
+
+CREATE POLICY tenant_switch_scope_migrator_read ON iam.memberships
+FOR SELECT TO machina_migrator
+USING (
+    current_user = 'machina_migrator'
+    AND current_setting('app.tenant_switch_scope', true) = 'on'
+);
+
+CREATE POLICY tenant_switch_scope_migrator_read ON iam.workspaces
+FOR SELECT TO machina_migrator
+USING (
+    current_user = 'machina_migrator'
+    AND current_setting('app.tenant_switch_scope', true) = 'on'
+);
+
 CREATE FUNCTION iam.validate_tenant_switch_idempotency_scope()
 RETURNS trigger
 LANGUAGE plpgsql
