@@ -43,4 +43,4 @@ jobs:
 
       - name: Verify generated authz Go protobuf
         working-directory: job
-        run: ./scripts/protogen/run.sh --check
+        run: bash ./scripts/protogen/run.sh --check
