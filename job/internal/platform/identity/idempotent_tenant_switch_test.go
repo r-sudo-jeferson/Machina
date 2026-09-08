@@ -177,7 +177,7 @@ func TestTenantSwitchCoordinatorClaimsMutatesCompletesAndPublishesOnlyAfterCommi
 	if string(unit.completeParams.ResponseBody) == "" || containsSecret(unit.completeParams.ResponseBody, got.SessionToken) || containsSecret(unit.completeParams.ResponseBody, got.CSRFToken) {
 		t.Fatalf("idempotency outcome contains browser secret: %q", unit.completeParams.ResponseBody)
 	}
-	if unit.finishParams.IdempotencyKey != validTenantSwitchRequest().IdempotencyKey || unit.finishParams.RequestHash != unit.bindRow.ReceiptHash {
+	if unit.finishParams.IdempotencyKey != validTenantSwitchRequest().IdempotencyKey || unit.finishParams.RequestHash != tenantSwitchRequestHash(validTenantSwitchRequest().TargetTenantID) {
 		t.Fatalf("finish params = %#v", unit.finishParams)
 	}
 }

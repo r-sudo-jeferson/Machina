@@ -144,7 +144,7 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 
 		switch bind.MappingState {
 		case "claimed":
-			return c.claimAndSwitch(txCtx, unit, request, bind, &pending)
+			return c.claimAndSwitch(txCtx, unit, request, requestHash, bind, &pending)
 		case "replay":
 			return c.replay(txCtx, unit, request, bind, &pending)
 		case "conflict":
@@ -176,6 +176,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	ctx context.Context,
 	unit tenantSwitchUnit,
 	request TenantSwitchRequest,
+	requestHash string,
 	bind sqlcgen.BindTenantSwitchIdempotencyRow,
 	pending *TenantSwitchResult,
 ) error {
@@ -239,10 +240,12 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	}
 
 	replacementHash := HashToken(switched.SessionToken)
+	// The generic receipt is keyed by the session-bound receipt hash, while the
+	// scope finish boundary verifies the original canonical body hash.
 	finished, err := unit.FinishTenantSwitchIdempotency(ctx, sqlcgen.FinishTenantSwitchIdempotencyParams{
 		CurrentSessionTokenHash: replacementHash[:],
 		IdempotencyKey:          request.IdempotencyKey,
-		RequestHash:             bind.ReceiptHash,
+		RequestHash:             requestHash,
 	})
 	if err != nil {
 		return fmt.Errorf("finish tenant-switch idempotency scope: %w", err)
