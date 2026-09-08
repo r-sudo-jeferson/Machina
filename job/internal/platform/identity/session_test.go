@@ -92,3 +92,33 @@ func TestCSRFCookieIsHostScopedReadableAndStrictSameSite(t *testing.T) {
 		t.Fatalf("CSRF cookie expiry = %v, want %v", cookie.Expires, expires)
 	}
 }
+
+func TestClearSessionCookiePreservesScopeAndExpiresImmediately(t *testing.T) {
+	t.Parallel()
+
+	cookie := ClearSessionCookie()
+	if cookie.Name != SessionCookieName || cookie.Value != "" || cookie.Path != "/" || cookie.Domain != "" {
+		t.Fatalf("clear session cookie scope = %#v", cookie)
+	}
+	if !cookie.Secure || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("clear session cookie hardening = %#v", cookie)
+	}
+	if cookie.MaxAge != -1 || !cookie.Expires.Before(time.Now().UTC()) {
+		t.Fatalf("clear session cookie is not immediately expired: %#v", cookie)
+	}
+}
+
+func TestClearCSRFCookiePreservesScopeAndExpiresImmediately(t *testing.T) {
+	t.Parallel()
+
+	cookie := ClearCSRFCookie()
+	if cookie.Name != CSRFCookieName || cookie.Value != "" || cookie.Path != "/" || cookie.Domain != "" {
+		t.Fatalf("clear CSRF cookie scope = %#v", cookie)
+	}
+	if !cookie.Secure || cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("clear CSRF cookie hardening = %#v", cookie)
+	}
+	if cookie.MaxAge != -1 || !cookie.Expires.Before(time.Now().UTC()) {
+		t.Fatalf("clear CSRF cookie is not immediately expired: %#v", cookie)
+	}
+}
