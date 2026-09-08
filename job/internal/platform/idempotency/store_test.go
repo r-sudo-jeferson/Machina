@@ -25,7 +25,6 @@ type recordingQueries struct {
 func (q *recordingQueries) ClaimIdempotencyKey(_ context.Context, arg sqlcgen.ClaimIdempotencyKeyParams) (sqlcgen.ClaimIdempotencyKeyRow, error) {
 	q.claimCalls++
 	q.claimParams = arg
-	q.claimParams.ResponseBody = nil
 	return q.claimRow, q.claimErr
 }
 
