@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 	"unicode/utf8"
 
@@ -62,10 +63,24 @@ type Store struct {
 }
 
 func NewStore(q queries) (*Store, error) {
-	if q == nil {
+	if isNilQueries(q) {
 		return nil, ErrInvalidStoreConfig
 	}
 	return &Store{queries: q}, nil
+}
+
+func isNilQueries(q queries) bool {
+	if q == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(q)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (s *Store) Claim(ctx context.Context, request ClaimRequest) (ClaimResult, error) {
