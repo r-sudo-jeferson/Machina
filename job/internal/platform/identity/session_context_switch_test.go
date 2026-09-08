@@ -15,7 +15,6 @@ type recordingSessionContextSwitcher struct {
 	replacementSessionToken string
 	replacementCSRFToken    string
 	targetTenantID          pgtype.UUID
-	targetWorkspaceID       pgtype.UUID
 	calls                   int
 	row                     sqlcgen.SwitchSessionContextRow
 	err                     error
@@ -27,14 +26,12 @@ func (s *recordingSessionContextSwitcher) SwitchContext(
 	replacementSessionToken string,
 	replacementCSRFToken string,
 	targetTenantID pgtype.UUID,
-	targetWorkspaceID pgtype.UUID,
 ) (sqlcgen.SwitchSessionContextRow, error) {
 	s.calls++
 	s.presentedSessionToken = presentedSessionToken
 	s.replacementSessionToken = replacementSessionToken
 	s.replacementCSRFToken = replacementCSRFToken
 	s.targetTenantID = targetTenantID
-	s.targetWorkspaceID = targetWorkspaceID
 	return s.row, s.err
 }
 
@@ -61,7 +58,7 @@ func TestSessionContextSwitchServicePublishesOnlyValidatedServerContext(t *testi
 		return token, nil
 	}
 
-	got, err := service.Switch(context.Background(), "presented-session", tenantID, workspaceID)
+	got, err := service.Switch(context.Background(), "presented-session", tenantID)
 	if err != nil {
 		t.Fatalf("Switch() error = %v", err)
 	}
@@ -71,8 +68,8 @@ func TestSessionContextSwitchServicePublishesOnlyValidatedServerContext(t *testi
 	if store.presentedSessionToken != "presented-session" || store.replacementSessionToken != "replacement-session" || store.replacementCSRFToken != "replacement-csrf" {
 		t.Fatalf("switch material = %#v", store)
 	}
-	if store.targetTenantID != tenantID || store.targetWorkspaceID != workspaceID {
-		t.Fatal("requested target changed before the server validation boundary")
+	if store.targetTenantID != tenantID {
+		t.Fatal("requested tenant changed before the server validation boundary")
 	}
 	if got.ActiveTenantID != tenantID || got.ActiveWorkspaceID != workspaceID || got.SessionToken != "replacement-session" || got.CSRFToken != "replacement-csrf" || !got.ExpiresAt.Equal(expiresAt) {
 		t.Fatalf("switched browser session = %#v", got)
@@ -89,7 +86,6 @@ func TestSessionContextSwitchServiceRejectsGeneratedSecretReuseBeforeDatabase(t 
 	t.Parallel()
 
 	tenantID := pgtype.UUID{Bytes: [16]byte{4}, Valid: true}
-	workspaceID := pgtype.UUID{Bytes: [16]byte{5}, Valid: true}
 	for _, tc := range []struct {
 		name   string
 		tokens []string
@@ -111,7 +107,7 @@ func TestSessionContextSwitchServiceRejectsGeneratedSecretReuseBeforeDatabase(t 
 				tokens = tokens[1:]
 				return token, nil
 			}
-			if _, err := service.Switch(context.Background(), "presented-session", tenantID, workspaceID); err == nil {
+			if _, err := service.Switch(context.Background(), "presented-session", tenantID); err == nil {
 				t.Fatal("Switch() accepted reused or colliding generated secret")
 			}
 			if store.calls != 0 {
@@ -151,7 +147,7 @@ func TestSessionContextSwitchServiceFailsClosedOnInvalidServerResult(t *testing.
 				tokens = tokens[1:]
 				return token, nil
 			}
-			if _, err := service.Switch(context.Background(), "presented-session", tenantID, workspaceID); !errors.Is(err, ErrInvalidSessionContextSwitchResult) {
+			if _, err := service.Switch(context.Background(), "presented-session", tenantID); !errors.Is(err, ErrInvalidSessionContextSwitchResult) {
 				t.Fatalf("Switch() error = %v, want ErrInvalidSessionContextSwitchResult", err)
 			}
 		})
@@ -162,7 +158,6 @@ func TestSessionContextSwitchServicePreservesGenerationAndStoreFailures(t *testi
 	t.Parallel()
 
 	tenantID := pgtype.UUID{Bytes: [16]byte{12}, Valid: true}
-	workspaceID := pgtype.UUID{Bytes: [16]byte{13}, Valid: true}
 	generationErr := errors.New("entropy unavailable")
 	store := &recordingSessionContextSwitcher{}
 	service, err := NewSessionContextSwitchService(store)
@@ -170,7 +165,7 @@ func TestSessionContextSwitchServicePreservesGenerationAndStoreFailures(t *testi
 		t.Fatalf("NewSessionContextSwitchService() error = %v", err)
 	}
 	service.newToken = func() (string, error) { return "", generationErr }
-	if _, err := service.Switch(context.Background(), "presented-session", tenantID, workspaceID); !errors.Is(err, generationErr) {
+	if _, err := service.Switch(context.Background(), "presented-session", tenantID); !errors.Is(err, generationErr) {
 		t.Fatalf("Switch() generation error = %v, want errors.Is(_, %v)", err, generationErr)
 	}
 	if store.calls != 0 {
@@ -189,8 +184,24 @@ func TestSessionContextSwitchServicePreservesGenerationAndStoreFailures(t *testi
 		tokens = tokens[1:]
 		return token, nil
 	}
-	if _, err := service.Switch(context.Background(), "presented-session", tenantID, workspaceID); !errors.Is(err, storeErr) {
+	if _, err := service.Switch(context.Background(), "presented-session", tenantID); !errors.Is(err, storeErr) {
 		t.Fatalf("Switch() store error = %v, want errors.Is(_, %v)", err, storeErr)
+	}
+}
+
+func TestSessionContextSwitchServiceRejectsInvalidTenantBeforeDatabase(t *testing.T) {
+	t.Parallel()
+
+	store := &recordingSessionContextSwitcher{}
+	service, err := NewSessionContextSwitchService(store)
+	if err != nil {
+		t.Fatalf("NewSessionContextSwitchService() error = %v", err)
+	}
+	if _, err := service.Switch(context.Background(), "presented-session", pgtype.UUID{}); !errors.Is(err, ErrInvalidTargetContext) {
+		t.Fatalf("Switch() error = %v, want ErrInvalidTargetContext", err)
+	}
+	if store.calls != 0 {
+		t.Fatal("invalid tenant reached database boundary")
 	}
 }
 
