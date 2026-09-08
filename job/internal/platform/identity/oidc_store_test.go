@@ -101,30 +101,40 @@ func TestOIDCAuthorizationAttemptStoreConsumeHashesPresentedState(t *testing.T) 
 func TestOIDCAuthorizationAttemptStoreFailsClosedOnMissingBrowserSecrets(t *testing.T) {
 	t.Parallel()
 
-	queries := &recordingOIDCAuthorizationAttemptQueries{}
-	store := NewOIDCAuthorizationAttemptStore(queries)
 	expiresAt := time.Now().Add(5 * time.Minute)
+	cases := []struct {
+		name        string
+		state       string
+		nonce       string
+		verifier    string
+		redirectURI string
+	}{
+		{name: "state", state: "", nonce: "nonce", verifier: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL01234", redirectURI: "https://app.example.test/auth/callback"},
+		{name: "nonce", state: "state", nonce: "", verifier: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL01234", redirectURI: "https://app.example.test/auth/callback"},
+		{name: "verifier", state: "state", nonce: "nonce", verifier: "", redirectURI: "https://app.example.test/auth/callback"},
+		{name: "redirect", state: "state", nonce: "nonce", verifier: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL01234", redirectURI: ""},
+	}
 
-	for name, state, nonce, verifier, redirectURI := range map[string][4]string{
-		"state":    {"", "nonce", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL01234", "https://app.example.test/auth/callback"},
-		"nonce":    {"state", "", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL01234", "https://app.example.test/auth/callback"},
-		"verifier": {"state", "nonce", "", "https://app.example.test/auth/callback"},
-		"redirect": {"state", "nonce", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL01234", ""},
-	} {
-		name, values := name, []string{state, nonce, verifier, redirectURI}
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if err := store.Create(context.Background(), values[0], values[1], values[2], values[3], expiresAt); err == nil {
-				t.Fatalf("Create() accepted missing %s", name)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			queries := &recordingOIDCAuthorizationAttemptQueries{}
+			store := NewOIDCAuthorizationAttemptStore(queries)
+			if err := store.Create(context.Background(), tc.state, tc.nonce, tc.verifier, tc.redirectURI, expiresAt); err == nil {
+				t.Fatalf("Create() accepted missing %s", tc.name)
+			}
+			if queries.createCalls != 0 {
+				t.Fatalf("missing %s reached the database boundary", tc.name)
 			}
 		})
 	}
 
+	queries := &recordingOIDCAuthorizationAttemptQueries{}
+	store := NewOIDCAuthorizationAttemptStore(queries)
 	if _, err := store.Consume(context.Background(), ""); err == nil {
 		t.Fatal("Consume() accepted missing state")
 	}
-	if queries.createCalls != 0 || queries.consumeCalls != 0 {
-		t.Fatal("missing OIDC browser secret reached the database boundary")
+	if queries.consumeCalls != 0 {
+		t.Fatal("missing OIDC state reached the database boundary")
 	}
 }
 
