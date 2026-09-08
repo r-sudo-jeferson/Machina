@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 )
@@ -20,6 +21,20 @@ type recordingTenantSwitchExecutor struct {
 	result  TenantSwitchResult
 	err     error
 	calls   int
+}
+
+type exactHTTPSessionLookup struct {
+	expectedToken string
+	row           sqlcgen.GetActiveSessionRow
+	calls         int
+}
+
+func (s *exactHTTPSessionLookup) Lookup(_ context.Context, presentedToken string) (sqlcgen.GetActiveSessionRow, error) {
+	s.calls++
+	if presentedToken != s.expectedToken {
+		return sqlcgen.GetActiveSessionRow{}, pgx.ErrNoRows
+	}
+	return s.row, nil
 }
 
 func (e *recordingTenantSwitchExecutor) Switch(_ context.Context, request TenantSwitchRequest) (TenantSwitchResult, error) {
@@ -43,10 +58,14 @@ func tenantSwitchHTTPMiddleware(t *testing.T, next http.Handler) http.Handler {
 }
 
 func tenantSwitchHTTPRequest() *http.Request {
+	return tenantSwitchHTTPRequestWithCredentials("presented-session", "csrf-secret")
+}
+
+func tenantSwitchHTTPRequestWithCredentials(sessionToken, csrfToken string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/v1/tenant-switch", bytes.NewReader([]byte(`{"tenant_id":"00000000-0000-0000-0000-0000000000b2"}`)))
-	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "presented-session"})
-	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "csrf-secret"})
-	req.Header.Set(CSRFHeaderName, "csrf-secret")
+	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sessionToken})
+	req.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: csrfToken})
+	req.Header.Set(CSRFHeaderName, csrfToken)
 	req.Header.Set("Idempotency-Key", "tenant-switch-http-key-0001")
 	return req
 }
@@ -145,5 +164,61 @@ func TestTenantSwitchHTTPHandlerRejectsMalformedInputBeforeExecutor(t *testing.T
 	tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusBadRequest || executor.calls != 0 {
 		t.Fatalf("malformed input = status %d calls %d", recorder.Code, executor.calls)
+	}
+}
+
+func TestTenantSwitchHTTPHandlerEnforcesRotatedSessionAndCSRFCredentialPairs(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name               string
+		activeSessionToken string
+		activeCSRFToken    string
+		presentedSession   string
+		presentedCSRF      string
+		wantStatus         int
+		wantExecutorCalls  int
+	}{
+		{name: "pre-rotation pair", activeSessionToken: "old-session", activeCSRFToken: "old-csrf", presentedSession: "old-session", presentedCSRF: "old-csrf", wantStatus: http.StatusOK, wantExecutorCalls: 1},
+		{name: "stale pair after rotation", activeSessionToken: "new-session", activeCSRFToken: "new-csrf", presentedSession: "old-session", presentedCSRF: "old-csrf", wantStatus: http.StatusUnauthorized},
+		{name: "old session with new csrf", activeSessionToken: "new-session", activeCSRFToken: "new-csrf", presentedSession: "old-session", presentedCSRF: "new-csrf", wantStatus: http.StatusUnauthorized},
+		{name: "new session with old csrf", activeSessionToken: "new-session", activeCSRFToken: "new-csrf", presentedSession: "new-session", presentedCSRF: "old-csrf", wantStatus: http.StatusForbidden},
+		{name: "rotated pair", activeSessionToken: "new-session", activeCSRFToken: "new-csrf", presentedSession: "new-session", presentedCSRF: "new-csrf", wantStatus: http.StatusOK, wantExecutorCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			csrfHash := HashToken(tc.activeCSRFToken)
+			lookup := &exactHTTPSessionLookup{
+				expectedToken: tc.activeSessionToken,
+				row: sqlcgen.GetActiveSessionRow{
+					ID:            tenantSwitchUUID(1),
+					SubjectID:     tenantSwitchUUID(2),
+					CsrfTokenHash: csrfHash[:],
+					ExpiresAt:     pgtype.Timestamptz{Time: time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC), Valid: true},
+				},
+			}
+			body := tenantSwitchHTTPResponseBody()
+			executor := &recordingTenantSwitchExecutor{result: TenantSwitchResult{
+				ResponseBody: body, ResponseStatus: http.StatusOK, CorrelationID: tenantSwitchUUID(9),
+				Replay: true, ETag: strongTenantSwitchETag(body),
+			}}
+			handler, err := NewTenantSwitchHTTPHandler(executor)
+			if err != nil {
+				t.Fatalf("NewTenantSwitchHTTPHandler() error = %v", err)
+			}
+			middleware, err := NewSessionHTTPMiddleware(lookup)
+			if err != nil {
+				t.Fatalf("NewSessionHTTPMiddleware() error = %v", err)
+			}
+			recorder := httptest.NewRecorder()
+			middleware.Wrap(handler).ServeHTTP(recorder, tenantSwitchHTTPRequestWithCredentials(tc.presentedSession, tc.presentedCSRF))
+
+			if recorder.Code != tc.wantStatus || executor.calls != tc.wantExecutorCalls {
+				t.Fatalf("response = status:%d executor_calls:%d, want status:%d calls:%d", recorder.Code, executor.calls, tc.wantStatus, tc.wantExecutorCalls)
+			}
+			if lookup.calls != 1 || len(recorder.Result().Cookies()) != 0 || recorder.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("credential boundary = lookup_calls:%d cookies:%#v headers:%#v", lookup.calls, recorder.Result().Cookies(), recorder.Header())
+			}
+		})
 	}
 }

@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -25,6 +26,8 @@ type recordingTenantSwitchUnit struct {
 	etagErr        error
 	auditErr       error
 	outboxErr      error
+	auditParams    sqlcgen.InsertAuditEventParams
+	outboxParams   sqlcgen.EnqueueOutboxEventParams
 	auditCalls     int
 	outboxCalls    int
 	etagCalls      int
@@ -119,13 +122,15 @@ func (u *recordingTenantSwitchUnit) GetTenantSwitchResponseETag(_ context.Contex
 	return u.responseETag, nil
 }
 
-func (u *recordingTenantSwitchUnit) InsertAuditEvent(_ context.Context, _ sqlcgen.InsertAuditEventParams) error {
+func (u *recordingTenantSwitchUnit) InsertAuditEvent(_ context.Context, arg sqlcgen.InsertAuditEventParams) error {
 	u.auditCalls++
+	u.auditParams = arg
 	return u.auditErr
 }
 
-func (u *recordingTenantSwitchUnit) EnqueueOutboxEvent(_ context.Context, _ sqlcgen.EnqueueOutboxEventParams) error {
+func (u *recordingTenantSwitchUnit) EnqueueOutboxEvent(_ context.Context, arg sqlcgen.EnqueueOutboxEventParams) error {
 	u.outboxCalls++
+	u.outboxParams = arg
 	return u.outboxErr
 }
 
@@ -225,6 +230,52 @@ func TestTenantSwitchCoordinatorClaimsMutatesCompletesAndPublishesOnlyAfterCommi
 	if unit.bindCalls != 1 || unit.claimCalls != 1 || unit.switchCalls != 1 || unit.completeCalls != 1 || unit.finishCalls != 1 {
 		t.Fatalf("transaction calls = bind:%d claim:%d switch:%d complete:%d finish:%d", unit.bindCalls, unit.claimCalls, unit.switchCalls, unit.completeCalls, unit.finishCalls)
 	}
+	if unit.auditCalls != 1 || unit.outboxCalls != 1 || unit.etagCalls != 1 {
+		t.Fatalf("transaction side effects = audit:%d outbox:%d etag:%d", unit.auditCalls, unit.outboxCalls, unit.etagCalls)
+	}
+	if unit.auditParams.TenantID != validTenantSwitchRequest().TargetTenantID ||
+		unit.auditParams.ActorSubjectID != tenantSwitchUUID(2) ||
+		unit.auditParams.EventType != "machina.tenant.switch.completed" ||
+		unit.auditParams.Action != "tenant.switch" || unit.auditParams.Decision != "allow" ||
+		unit.auditParams.PolicyVersion != 1 ||
+		unit.auditParams.CorrelationID != validTenantSwitchRequest().CorrelationID ||
+		!unit.auditParams.EventID.Valid || len(unit.auditParams.EventHash) != 32 ||
+		!unit.auditParams.OccurredAt.Valid {
+		t.Fatalf("audit params = %#v", unit.auditParams)
+	}
+	if unit.outboxParams.TenantID != validTenantSwitchRequest().TargetTenantID ||
+		unit.outboxParams.EventType != "machina.tenant.switch.completed" ||
+		unit.outboxParams.EventVersion != 1 ||
+		unit.outboxParams.CorrelationID != validTenantSwitchRequest().CorrelationID ||
+		!unit.outboxParams.EventID.Valid || !unit.outboxParams.OccurredAt.Valid ||
+		!unit.outboxParams.OccurredAt.Time.Equal(unit.auditParams.OccurredAt.Time) {
+		t.Fatalf("outbox params = %#v", unit.outboxParams)
+	}
+	var auditMetadata map[string]any
+	if err := json.Unmarshal(unit.auditParams.SafeMetadata, &auditMetadata); err != nil {
+		t.Fatalf("unmarshal audit metadata: %v", err)
+	}
+	if auditMetadata["target_tenant_id"] != uuidText(validTenantSwitchRequest().TargetTenantID) ||
+		auditMetadata["target_workspace_id"] != uuidText(unit.switchRow.ActiveWorkspaceID) ||
+		auditMetadata["session_generation"] != float64(unit.finishRow.ResultGeneration) {
+		t.Fatalf("audit metadata = %#v", auditMetadata)
+	}
+	var outboxEnvelope struct {
+		ActorID     pgtype.UUID    `json:"actor_id"`
+		WorkspaceID pgtype.UUID    `json:"workspace_id"`
+		Payload     map[string]any `json:"payload"`
+	}
+	if err := json.Unmarshal(unit.outboxParams.Payload, &outboxEnvelope); err != nil {
+		t.Fatalf("unmarshal outbox payload: %v", err)
+	}
+	if outboxEnvelope.ActorID != tenantSwitchUUID(2) || outboxEnvelope.WorkspaceID != unit.switchRow.ActiveWorkspaceID ||
+		!reflect.DeepEqual(outboxEnvelope.Payload, auditMetadata) {
+		t.Fatalf("outbox envelope = %#v", outboxEnvelope)
+	}
+	if containsSecret(unit.auditParams.SafeMetadata, got.SessionToken) || containsSecret(unit.auditParams.SafeMetadata, got.CSRFToken) ||
+		containsSecret(unit.outboxParams.Payload, got.SessionToken) || containsSecret(unit.outboxParams.Payload, got.CSRFToken) {
+		t.Fatal("audit or outbox payload contains a browser secret")
+	}
 	if unit.claimParams.Operation != TenantSwitchOperation || unit.claimParams.IdempotencyKey != validTenantSwitchRequest().IdempotencyKey || unit.claimParams.CorrelationID != validTenantSwitchRequest().CorrelationID {
 		t.Fatalf("claim params = %#v", unit.claimParams)
 	}
@@ -265,8 +316,11 @@ func TestTenantSwitchCoordinatorReplayDoesNotGenerateOrRotate(t *testing.T) {
 	if got.ResponseStatus != 200 || got.CorrelationID != validTenantSwitchRequest().CorrelationID || got.Generation != 8 || got.ActiveTenantID != unit.bindRow.ActiveTenantID || got.ActiveWorkspaceID != unit.bindRow.ActiveWorkspaceID {
 		t.Fatalf("replay result = %#v", got)
 	}
-	if unit.switchCalls != 0 || unit.completeCalls != 0 || unit.finishCalls != 0 {
-		t.Fatalf("replay performed mutation calls: switch:%d complete:%d finish:%d", unit.switchCalls, unit.completeCalls, unit.finishCalls)
+	if unit.switchCalls != 0 || unit.completeCalls != 0 || unit.finishCalls != 0 || unit.auditCalls != 0 || unit.outboxCalls != 0 {
+		t.Fatalf("replay performed mutation calls: switch:%d complete:%d finish:%d audit:%d outbox:%d", unit.switchCalls, unit.completeCalls, unit.finishCalls, unit.auditCalls, unit.outboxCalls)
+	}
+	if unit.etagCalls != 1 {
+		t.Fatalf("replay ETag reads = %d, want 1", unit.etagCalls)
 	}
 }
 
@@ -471,6 +525,55 @@ func TestTenantSwitchCoordinatorRollsBackWithoutLeakingSecrets(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, TenantSwitchResult{}) {
 		t.Fatalf("failed transaction returned secrets/result = %#v", got)
+	}
+}
+
+func TestTenantSwitchCoordinatorAuditAndOutboxFailuresAbortBeforeReceiptCompletion(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name            string
+		configure       func(*recordingTenantSwitchUnit, error)
+		wantAuditCalls  int
+		wantOutboxCalls int
+	}{
+		{
+			name: "audit insertion",
+			configure: func(unit *recordingTenantSwitchUnit, failure error) {
+				unit.auditErr = failure
+			},
+			wantAuditCalls: 1,
+		},
+		{
+			name: "outbox insertion",
+			configure: func(unit *recordingTenantSwitchUnit, failure error) {
+				unit.outboxErr = failure
+			},
+			wantAuditCalls:  1,
+			wantOutboxCalls: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			unit := claimedTenantSwitchUnit()
+			failure := errors.New("injected transactional side-effect failure")
+			tc.configure(unit, failure)
+			coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
+
+			got, err := coordinator.Switch(context.Background(), validTenantSwitchRequest())
+			if !errors.Is(err, failure) {
+				t.Fatalf("Switch() error = %v, want injected failure", err)
+			}
+			if !reflect.DeepEqual(got, TenantSwitchResult{}) {
+				t.Fatalf("failed transaction returned secrets/result = %#v", got)
+			}
+			if unit.auditCalls != tc.wantAuditCalls || unit.outboxCalls != tc.wantOutboxCalls {
+				t.Fatalf("side-effect calls = audit:%d outbox:%d, want audit:%d outbox:%d", unit.auditCalls, unit.outboxCalls, tc.wantAuditCalls, tc.wantOutboxCalls)
+			}
+			if unit.completeCalls != 0 || unit.etagCalls != 0 || unit.finishCalls != 0 {
+				t.Fatalf("failed side effect reached receipt completion: complete:%d etag:%d finish:%d", unit.completeCalls, unit.etagCalls, unit.finishCalls)
+			}
+		})
 	}
 }
 
