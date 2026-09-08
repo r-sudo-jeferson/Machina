@@ -222,6 +222,49 @@ func (q *Queries) RevokeSession(ctx context.Context, sessionTokenHash []byte) er
 	return err
 }
 
+const rotateSession = `-- name: RotateSession :one
+SELECT
+  rotated_session.id::uuid AS id,
+  rotated_session.subject_id::uuid AS subject_id,
+  rotated_session.expires_at::timestamptz AS expires_at,
+  rotated_session.rotated_at::timestamptz AS rotated_at
+FROM iam.rotate_session(
+  $1::bytea,
+  $2::bytea,
+  $3::bytea
+) AS rotated_session(
+  id,
+  subject_id,
+  expires_at,
+  rotated_at
+)
+`
+
+type RotateSessionParams struct {
+	SessionTokenHash    []byte
+	NewSessionTokenHash []byte
+	NewCsrfTokenHash    []byte
+}
+
+type RotateSessionRow struct {
+	ID        pgtype.UUID
+	SubjectID pgtype.UUID
+	ExpiresAt pgtype.Timestamptz
+	RotatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (RotateSessionRow, error) {
+	row := q.db.QueryRow(ctx, rotateSession, arg.SessionTokenHash, arg.NewSessionTokenHash, arg.NewCsrfTokenHash)
+	var i RotateSessionRow
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectID,
+		&i.ExpiresAt,
+		&i.RotatedAt,
+	)
+	return i, err
+}
+
 const upsertSubject = `-- name: UpsertSubject :one
 SELECT iam.upsert_subject(
   $1::uuid,
