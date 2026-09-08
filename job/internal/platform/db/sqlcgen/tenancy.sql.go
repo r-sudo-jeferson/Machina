@@ -283,7 +283,7 @@ LIMIT 1
 `
 
 type GetActivePolicySnapshotRow struct {
-	Version     int64
+	Version      int64
 	SnapshotHash string
 }
 
