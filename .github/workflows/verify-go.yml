@@ -48,9 +48,6 @@ jobs:
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
             printf 'unformatted Go files:\n%s\n' "$unformatted"
-            printf '%s\n' '--- canonical gofmt diff ---'
-            gofmt -w $unformatted
-            git diff -- .
             exit 1
           fi
           go mod tidy -diff
