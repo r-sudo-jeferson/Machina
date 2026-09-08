@@ -134,7 +134,7 @@ func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
 	winnerSessionHash := identity.HashToken(winner.SessionToken)
 	var rotatedSessionID pgtype.UUID
 	if err := pool.QueryRow(ctx, `
-		SELECT session_id FROM iam.rotate_session($1::bytea, $2::bytea, $3::bytea)
+		SELECT id FROM iam.rotate_session($1::bytea, $2::bytea, $3::bytea)
 	`, winnerSessionHash[:], nextSessionHash[:], nextCSRFHash[:]).Scan(&rotatedSessionID); err != nil {
 		t.Fatalf("later session rotation: %v", err)
 	}
