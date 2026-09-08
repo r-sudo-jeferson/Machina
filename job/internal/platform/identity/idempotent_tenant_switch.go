@@ -370,10 +370,13 @@ func (c *TenantSwitchCoordinator) replay(
 		return err
 	}
 	if response.Active.Tenant.ID != uuidText(bind.ActiveTenantID) ||
-		response.Active.SessionGeneration != bind.Generation ||
 		!response.ExpiresAt.Equal(bind.SessionExpiresAt.Time.UTC()) {
 		return ErrInvalidTenantSwitchOutcome
 	}
+	// Session generation is an internal scope marker, not an OpenAPI field.
+	// The binder already checked the current generation; attach that marker only
+	// after validating the immutable historical response.
+	response.Active.SessionGeneration = bind.Generation
 	storedETag, err := unit.GetTenantSwitchResponseETag(ctx, sqlcgen.GetTenantSwitchResponseETagParams{
 		IdempotencyKey: request.IdempotencyKey,
 		RequestHash:    bind.ReceiptHash,
@@ -604,9 +607,6 @@ func validateTenantSwitchResponse(response tenantSwitchSessionContext) error {
 		seen[tenant.ID] = struct{}{}
 	}
 	if _, ok := seen[response.Active.Tenant.ID]; !ok {
-		return ErrInvalidTenantSwitchOutcome
-	}
-	if response.Active.SessionGeneration <= 0 {
 		return ErrInvalidTenantSwitchOutcome
 	}
 	return nil
