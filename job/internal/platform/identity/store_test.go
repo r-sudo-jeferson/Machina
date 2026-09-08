@@ -196,7 +196,7 @@ func TestSessionStoreRotateRejectsMissingReusedOrCollidingSecretsBeforeDatabase(
 	}
 
 	for _, tt := range tests {
-		t := tt
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			queries := &recordingSessionQueries{}
@@ -290,7 +290,7 @@ func TestSessionStoreSwitchContextRejectsInvalidInputBeforeDatabase(t *testing.T
 	}
 
 	for _, tt := range tests {
-		t := tt
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			queries := &recordingSessionQueries{}
