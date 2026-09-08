@@ -22,6 +22,7 @@ readonly MIGRATIONS=(
   db/migrations/0006_rls.sql
   db/migrations/0007_integrity.sql
   db/migrations/0008_identity_session_access.sql
+  db/migrations/0009_session_context_access.sql
 )
 
 fail() {
