@@ -181,6 +181,7 @@ run_go_tenant_switch_integration() {
   docker cp "$integration_binary" "$CONTAINER:/tmp/machina-tenant-switch-identity.test" >/dev/null
   docker exec "$CONTAINER" env \
     MACHINA_TENANT_SWITCH_DATABASE_URL="postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
+    MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL="postgresql://postgres@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
     /tmp/machina-tenant-switch-identity.test \
     -test.run '^TestTenantSwitchCoordinatorAgainstPostgreSQL$' \
     -test.v
