@@ -76,6 +76,13 @@ impl PolicyCache {
     }
 
     pub fn insert(&mut self, tenant_id: &str, snapshot: PolicySnapshot) {
+        if self
+            .snapshots
+            .get(tenant_id)
+            .is_some_and(|current| current.version() >= snapshot.version())
+        {
+            return;
+        }
         self.snapshots.insert(tenant_id.to_owned(), snapshot);
     }
 
