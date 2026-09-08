@@ -8,8 +8,9 @@ readonly MISMATCH_SESSION_ID='39000000-0000-0000-0000-00000000cb04'
 readonly EXPIRED_SESSION_ID='39000000-0000-0000-0000-00000000cb05'
 
 docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$DB_NAME" <<SQL
-INSERT INTO iam.memberships (tenant_id, subject_id, starter_role, status)
-VALUES ('${TENANT_B}', '${SUBJECT_A}', 'member', 'active');
+UPDATE iam.memberships
+SET status = 'active', starter_role = 'member', updated_at = now()
+WHERE tenant_id = '${TENANT_B}' AND subject_id = '${SUBJECT_A}';
 
 INSERT INTO iam.sessions (id, subject_id, session_token_hash, csrf_token_hash, expires_at) VALUES
   ('${SWITCH_SESSION_ID}', '${SUBJECT_A}', decode(repeat('e1', 32), 'hex'), decode(repeat('d1', 32), 'hex'), now() + interval '2 hours'),
