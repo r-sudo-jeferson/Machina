@@ -97,7 +97,7 @@ func (c *TenantSwitchCoordinator) authorizeTenantSwitch(
 	if tenantSwitchDenyIsOperational(decision.ReasonCodes) {
 		return ErrTenantSwitchAuthorizationUnavailable
 	}
-	return nil
+	return ErrTenantSwitchForbidden
 }
 
 func tenantSwitchDenyIsOperational(reasonCodes []string) bool {
