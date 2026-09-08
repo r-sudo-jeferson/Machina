@@ -97,10 +97,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 	if len(event.PreviousHash) != 0 && len(event.PreviousHash) != sha256.Size {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
-	if event.SafeMetadata.kind == safeMetadataAuthorizationDecision && event.SafeMetadata.decision != event.Decision {
-		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
-	}
-	metadata, err := event.SafeMetadata.marshal()
+	metadata, err := event.SafeMetadata.marshalForDecision(event.Decision)
 	if err != nil || !json.Valid(metadata) {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
