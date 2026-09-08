@@ -15,14 +15,7 @@ SELECT iam.create_session(
 )::uuid AS session_id;
 
 -- name: GetActiveSession :one
-SELECT
-  id,
-  subject_id,
-  csrf_token_hash,
-  active_tenant_id,
-  active_workspace_id,
-  expires_at,
-  rotated_at
+SELECT *
 FROM iam.get_active_session(sqlc.arg(session_token_hash)::bytea);
 
 -- name: RevokeSession :exec
