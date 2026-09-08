@@ -14,7 +14,7 @@ expect_equals 'claimed' "$claim_state" 'first idempotency claim was not acquired
 complete_result="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_A}',true); SELECT ops.complete_idempotency_key('${IDEMPOTENCY_KEY}','tenant.switch','${REQUEST_HASH_A}',200,'{\"active_tenant_id\":\"${TENANT_A}\"}'::jsonb); COMMIT;" | tail -n 1)"
 expect_equals 't' "$complete_result" 'idempotency completion did not persist the response'
 
-replay_result="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_A}',true); SELECT claim_state || ':' || response_status::text || ':' || response_body->>'active_tenant_id' || ':' || correlation_id::text FROM ops.claim_idempotency_key('${IDEMPOTENCY_KEY}','tenant.switch','${REQUEST_HASH_A}','${CORRELATION_B}',now() + interval '1 hour'); COMMIT;" | tail -n 1)"
+replay_result="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_A}',true); SELECT claim_state || ':' || response_status::text || ':' || (response_body->>'active_tenant_id') || ':' || correlation_id::text FROM ops.claim_idempotency_key('${IDEMPOTENCY_KEY}','tenant.switch','${REQUEST_HASH_A}','${CORRELATION_B}',now() + interval '1 hour'); COMMIT;" | tail -n 1)"
 expect_equals "replay:200:${TENANT_A}:${CORRELATION_A}" "$replay_result" 'same idempotency key/request did not replay the original completed response and correlation'
 
 conflict_result="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT set_config('app.tenant_id','${TENANT_A}',true); SELECT claim_state FROM ops.claim_idempotency_key('${IDEMPOTENCY_KEY}','tenant.switch','${REQUEST_HASH_B}','${CORRELATION_B}',now() + interval '1 hour'); COMMIT;" | tail -n 1)"
