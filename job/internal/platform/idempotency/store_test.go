@@ -31,7 +31,6 @@ func (q *recordingQueries) ClaimIdempotencyKey(_ context.Context, arg sqlcgen.Cl
 func (q *recordingQueries) CompleteIdempotencyKey(_ context.Context, arg sqlcgen.CompleteIdempotencyKeyParams) (bool, error) {
 	q.completeCalls++
 	q.completeParams = arg
-	q.completeParams.ResponseBody = append([]byte(nil), arg.ResponseBody...)
 	return q.completeResult, q.completeErr
 }
 
@@ -126,9 +125,14 @@ func TestStoreClaimRejectsInvalidDatabaseStateFailClosed(t *testing.T) {
 		{name: "missing correlation", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed"}},
 		{name: "claimed correlation mismatch", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", CorrelationID: storedCorrelation}},
 		{name: "claimed carries response status", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", ResponseStatus: 200, CorrelationID: requestedCorrelation}},
+		{name: "claimed carries response body", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", ResponseBody: []byte(`{"unexpected":true}`), CorrelationID: requestedCorrelation}},
 		{name: "in progress carries response status", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "in_progress", ResponseStatus: 200, CorrelationID: storedCorrelation}},
+		{name: "in progress carries response body", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "in_progress", ResponseBody: []byte(`{"unexpected":true}`), CorrelationID: storedCorrelation}},
 		{name: "conflict carries response status", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "conflict", ResponseStatus: 409, CorrelationID: storedCorrelation}},
+		{name: "conflict carries response body", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "conflict", ResponseBody: []byte(`{"unexpected":true}`), CorrelationID: storedCorrelation}},
 		{name: "replay missing response status", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "replay", CorrelationID: storedCorrelation}},
+		{name: "replay missing response body", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "replay", ResponseStatus: 200, CorrelationID: storedCorrelation}},
+		{name: "replay invalid response body", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "replay", ResponseStatus: 200, ResponseBody: []byte(`{"broken"`), CorrelationID: storedCorrelation}},
 		{name: "replay invalid low status", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "replay", ResponseStatus: 99, CorrelationID: storedCorrelation}},
 		{name: "replay invalid high status", row: sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "replay", ResponseStatus: 600, CorrelationID: storedCorrelation}},
 	}
@@ -146,6 +150,42 @@ func TestStoreClaimRejectsInvalidDatabaseStateFailClosed(t *testing.T) {
 				t.Fatalf("Claim() error = %v, want ErrInvalidClaimResult", err)
 			}
 		})
+	}
+}
+
+func TestStoreClaimReturnsIndependentReplayBody(t *testing.T) {
+	t.Parallel()
+
+	storedBody := []byte(`{"ok":true}`)
+	queries := &recordingQueries{claimRow: sqlcgen.ClaimIdempotencyKeyRow{
+		ClaimState:     "replay",
+		ResponseStatus: 200,
+		ResponseBody:   storedBody,
+		CorrelationID:  uuid(9),
+	}}
+	store, err := NewStore(queries)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	result, err := store.Claim(context.Background(), ClaimRequest{
+		Key:           "tenant-switch-key-0009",
+		Operation:     "tenant.switch",
+		RequestHash:   hashA,
+		CorrelationID: uuid(8),
+		ExpiresAt:     time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Claim() error = %v", err)
+	}
+
+	storedBody[0] = '['
+	if string(result.ResponseBody) != `{"ok":true}` {
+		t.Fatalf("Claim() replay body changed with database buffer: %q", result.ResponseBody)
+	}
+	storedBody[0] = '{'
+	result.ResponseBody[0] = '['
+	if queries.claimRow.ResponseBody[0] != '{' {
+		t.Fatal("Claim() replay result unexpectedly aliases database buffer")
 	}
 }
 
@@ -211,11 +251,15 @@ func TestStoreCompleteValidatesAndPreservesDatabaseFailure(t *testing.T) {
 	if queries.completeCalls != 1 || queries.completeParams.IdempotencyKey != "tenant-switch-key-0004" || queries.completeParams.Operation != "tenant.switch" || queries.completeParams.RequestHash != hashA || queries.completeParams.ResponseStatus != 200 || !reflect.DeepEqual(queries.completeParams.ResponseBody, response) {
 		t.Fatalf("CompleteIdempotencyKey() = %#v calls=%d", queries.completeParams, queries.completeCalls)
 	}
+	response[0] = '['
+	if string(queries.completeParams.ResponseBody) != `{"active_tenant_id":"tenant-a"}` {
+		t.Fatalf("CompleteIdempotencyKey() body changed with caller buffer: %q", queries.completeParams.ResponseBody)
+	}
 
 	wantErr := errors.New("database unavailable")
 	queries = &recordingQueries{completeErr: wantErr}
 	store, _ = NewStore(queries)
-	if err := store.Complete(context.Background(), Completion{Key: "tenant-switch-key-0005", Operation: "tenant.switch", RequestHash: hashA, ResponseStatus: 200, ResponseBody: response}); !errors.Is(err, wantErr) {
+	if err := store.Complete(context.Background(), Completion{Key: "tenant-switch-key-0005", Operation: "tenant.switch", RequestHash: hashA, ResponseStatus: 200, ResponseBody: []byte(`{"active_tenant_id":"tenant-a"}`)}); !errors.Is(err, wantErr) {
 		t.Fatalf("Complete() error = %v, want errors.Is(_, %v)", err, wantErr)
 	}
 }
@@ -278,6 +322,10 @@ func TestStorePreservesClaimDatabaseFailureAndRejectsNilConfiguration(t *testing
 
 	if _, err := NewStore(nil); !errors.Is(err, ErrInvalidStoreConfig) {
 		t.Fatalf("NewStore(nil) error = %v, want ErrInvalidStoreConfig", err)
+	}
+	var typedNil *recordingQueries
+	if _, err := NewStore(typedNil); !errors.Is(err, ErrInvalidStoreConfig) {
+		t.Fatalf("NewStore(typed nil) error = %v, want ErrInvalidStoreConfig", err)
 	}
 }
 
