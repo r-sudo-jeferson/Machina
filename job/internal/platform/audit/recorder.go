@@ -14,22 +14,22 @@ import (
 )
 
 var (
-	ErrInvalidEvent = errors.New("invalid audit event")
+	ErrInvalidEvent  = errors.New("invalid audit event")
 	ErrInvalidWriter = errors.New("invalid audit writer")
 )
 
 type Event struct {
-	TenantID        pgtype.UUID
-	ID              pgtype.UUID
-	ActorSubjectID  pgtype.UUID
-	EventType       string
-	Action          string
-	Decision        string
-	PolicyVersion   int64
-	CorrelationID   pgtype.UUID
-	SafeMetadata    map[string]any
-	PreviousHash    []byte
-	OccurredAt      time.Time
+	TenantID       pgtype.UUID
+	ID             pgtype.UUID
+	ActorSubjectID pgtype.UUID
+	EventType      string
+	Action         string
+	Decision       string
+	PolicyVersion  int64
+	CorrelationID  pgtype.UUID
+	SafeMetadata   map[string]any
+	PreviousHash   []byte
+	OccurredAt     time.Time
 }
 
 type Writer interface {
