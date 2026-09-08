@@ -179,11 +179,11 @@ func claimedTenantSwitchUnit() *recordingTenantSwitchUnit {
 		panic(err)
 	}
 	return &recordingTenantSwitchUnit{
-		bindRow:       row,
-		claimRow:      sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", CorrelationID: validTenantSwitchRequest().CorrelationID},
-		finishRow:     sqlcgen.FinishTenantSwitchIdempotencyRow{Finished: true, SessionID: row.SessionID, ResultGeneration: row.Generation + 1},
-		switchRow:     validTenantSwitchSwitchRow(),
-		responseETag:  strongTenantSwitchETag(canonical),
+		bindRow:      row,
+		claimRow:     sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", CorrelationID: validTenantSwitchRequest().CorrelationID},
+		finishRow:    sqlcgen.FinishTenantSwitchIdempotencyRow{Finished: true, SessionID: row.SessionID, ResultGeneration: row.Generation + 1},
+		switchRow:    validTenantSwitchSwitchRow(),
+		responseETag: strongTenantSwitchETag(canonical),
 	}
 }
 
