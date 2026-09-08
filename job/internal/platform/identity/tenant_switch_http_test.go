@@ -16,10 +16,10 @@ import (
 )
 
 type recordingTenantSwitchExecutor struct {
-	request	TenantSwitchRequest
-	result	TenantSwitchResult
-	err		error
-	calls	int
+	request TenantSwitchRequest
+	result  TenantSwitchResult
+	err     error
+	calls   int
 }
 
 func (e *recordingTenantSwitchExecutor) Switch(_ context.Context, request TenantSwitchRequest) (TenantSwitchResult, error) {
