@@ -141,21 +141,8 @@ func ReconstructDecision(stored StoredDecision) (DecisionEvidence, error) {
 	}
 
 	trimmed := bytes.TrimSpace(stored.SafeMetadata)
-	if len(trimmed) < 2 || trimmed[0] != '{' || trimmed[len(trimmed)-1] != '}' {
-		return DecisionEvidence{}, ErrInvalidDecisionEvidence
-	}
-	decoder := json.NewDecoder(bytes.NewReader(trimmed))
-	decoder.DisallowUnknownFields()
-	var payload authorizationDecisionMetadataPayload
-	if err := decoder.Decode(&payload); err != nil {
-		return DecisionEvidence{}, ErrInvalidDecisionEvidence
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return DecisionEvidence{}, ErrInvalidDecisionEvidence
-	}
-	canonical, err := json.Marshal(payload)
-	if err != nil || !bytes.Equal(trimmed, canonical) {
+	payload, err := decodeAuthorizationDecisionMetadata(trimmed)
+	if err != nil {
 		return DecisionEvidence{}, ErrInvalidDecisionEvidence
 	}
 	const maxLatencyMilliseconds = int64((1<<63 - 1) / int64(time.Millisecond))
@@ -174,6 +161,59 @@ func ReconstructDecision(stored StoredDecision) (DecisionEvidence, error) {
 		Latency:        time.Duration(payload.LatencyMS) * time.Millisecond,
 		ReasonCodes:    append([]string(nil), payload.ReasonCodes...),
 	}, nil
+}
+
+func decodeAuthorizationDecisionMetadata(raw []byte) (authorizationDecisionMetadataPayload, error) {
+	if len(raw) < 2 || raw[0] != '{' || raw[len(raw)-1] != '}' {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+
+	keyDecoder := json.NewDecoder(bytes.NewReader(raw))
+	start, err := keyDecoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+	seen := make(map[string]struct{}, 2)
+	for keyDecoder.More() {
+		keyToken, err := keyDecoder.Token()
+		if err != nil {
+			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+		}
+		key, ok := keyToken.(string)
+		if !ok || (key != "latency_ms" && key != "reason_codes") {
+			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+		}
+		if _, exists := seen[key]; exists {
+			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+		}
+		seen[key] = struct{}{}
+		var value json.RawMessage
+		if err := keyDecoder.Decode(&value); err != nil {
+			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+		}
+	}
+	end, err := keyDecoder.Token()
+	if err != nil || end != json.Delim('}') {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+	var extra any
+	if err := keyDecoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+	if _, ok := seen["latency_ms"]; !ok {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var payload authorizationDecisionMetadataPayload
+	if err := decoder.Decode(&payload); err != nil {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+	}
+	return payload, nil
 }
 
 func uuidText(value pgtype.UUID) string {
