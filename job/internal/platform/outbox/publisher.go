@@ -69,7 +69,7 @@ func Params(envelope Envelope) (sqlcgen.EnqueueOutboxEventParams, error) {
 		return sqlcgen.EnqueueOutboxEventParams{}, ErrInvalidEnvelope
 	}
 	return sqlcgen.EnqueueOutboxEventParams{
-		TenantID: envelope.TenantID, ID: envelope.EventID, EventType: envelope.EventType,
+		TenantID: envelope.TenantID, EventID: envelope.EventID, EventType: envelope.EventType,
 		EventVersion: envelope.EventVersion, CorrelationID: envelope.CorrelationID,
 		Payload: payload, OccurredAt: pgtype.Timestamptz{Time: envelope.OccurredAt.UTC(), Valid: true},
 	}, nil
