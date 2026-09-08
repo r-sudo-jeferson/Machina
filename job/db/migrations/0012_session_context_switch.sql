@@ -31,8 +31,7 @@ CREATE FUNCTION iam.switch_session_context(
     p_current_session_token_hash bytea,
     p_replacement_session_token_hash bytea,
     p_replacement_csrf_token_hash bytea,
-    p_target_tenant_id uuid,
-    p_target_workspace_id uuid
+    p_target_tenant_id uuid
 )
 RETURNS TABLE (
     session_id uuid,
@@ -49,6 +48,7 @@ AS $$
 DECLARE
     selected_session_id uuid;
     selected_subject_id uuid;
+    selected_workspace_id uuid;
     selected_expires_at timestamptz;
     current_csrf_token_hash bytea;
     previous_switch_capability text;
@@ -62,10 +62,11 @@ BEGIN
     IF p_replacement_csrf_token_hash IS NULL OR octet_length(p_replacement_csrf_token_hash) <> 32 THEN
         RAISE EXCEPTION 'replacement csrf token hash must contain exactly 32 bytes' USING ERRCODE = '22023';
     END IF;
-    IF p_target_tenant_id IS NULL OR p_target_workspace_id IS NULL THEN
+    IF p_target_tenant_id IS NULL THEN
         RAISE EXCEPTION 'requested context is unavailable' USING ERRCODE = '42501';
     END IF;
     IF p_current_session_token_hash = p_replacement_session_token_hash
+       OR p_current_session_token_hash = p_replacement_csrf_token_hash
        OR p_replacement_session_token_hash = p_replacement_csrf_token_hash THEN
         RAISE EXCEPTION 'replacement session secrets must be independent' USING ERRCODE = '22023';
     END IF;
@@ -102,10 +103,12 @@ BEGIN
         RAISE EXCEPTION 'requested context is unavailable' USING ERRCODE = '42501';
     END IF;
 
-    PERFORM 1
+    SELECT workspace.id
+    INTO selected_workspace_id
     FROM iam.workspaces AS workspace
     WHERE workspace.tenant_id = p_target_tenant_id
-      AND workspace.id = p_target_workspace_id;
+    ORDER BY workspace.created_at, workspace.id
+    LIMIT 1;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'requested context is unavailable' USING ERRCODE = '42501';
@@ -115,7 +118,7 @@ BEGIN
     SET session_token_hash = p_replacement_session_token_hash,
         csrf_token_hash = p_replacement_csrf_token_hash,
         active_tenant_id = p_target_tenant_id,
-        active_workspace_id = p_target_workspace_id,
+        active_workspace_id = selected_workspace_id,
         rotated_at = now()
     WHERE session.id = selected_session_id;
 
@@ -126,16 +129,16 @@ BEGIN
     );
 
     RETURN QUERY
-    SELECT selected_session_id, p_target_tenant_id, p_target_workspace_id, selected_expires_at;
+    SELECT selected_session_id, p_target_tenant_id, selected_workspace_id, selected_expires_at;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid, uuid) TO machina_runtime;
+REVOKE ALL ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid) TO machina_runtime;
 
 COMMENT ON POLICY session_context_switch_migrator_read ON iam.memberships IS 'Allows only the migration-role security definer to verify a requested tenant membership while the transaction-local session-context-switch capability is active.';
 COMMENT ON POLICY session_context_switch_migrator_read ON iam.tenants IS 'Allows only the migration-role security definer to verify requested tenant availability while the transaction-local session-context-switch capability is active.';
-COMMENT ON POLICY session_context_switch_migrator_read ON iam.workspaces IS 'Allows only the migration-role security definer to verify that the requested workspace belongs to the validated target tenant while the transaction-local session-context-switch capability is active.';
-COMMENT ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid, uuid) IS 'Atomically validates an active session, active membership, active tenant, and tenant-owned workspace before rotating session secrets and setting the server-owned active context while preserving and returning the absolute session expiry.';
+COMMENT ON POLICY session_context_switch_migrator_read ON iam.workspaces IS 'Allows only the migration-role security definer to derive the server-owned workspace for a validated target tenant while the transaction-local session-context-switch capability is active.';
+COMMENT ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid) IS 'Atomically validates an active session, active membership, and active tenant, derives the first tenant workspace server-side, rotates session secrets, and preserves the absolute session expiry.';
 
 COMMIT;
