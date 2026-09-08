@@ -2,12 +2,12 @@
 
 readonly CONCURRENT_SESSION_A_ID='39000000-0000-0000-0000-00000000ca01'
 readonly CONCURRENT_SESSION_B_ID='39000000-0000-0000-0000-00000000ca02'
-readonly CONCURRENT_SESSION_A_HASH="$(printf '91%.0s' {1..32})"
-readonly CONCURRENT_SESSION_A_CSRF="$(printf '92%.0s' {1..32})"
-readonly CONCURRENT_SESSION_A_ROTATED_HASH="$(printf '93%.0s' {1..32})"
-readonly CONCURRENT_SESSION_A_ROTATED_CSRF="$(printf '94%.0s' {1..32})"
-readonly CONCURRENT_SESSION_B_HASH="$(printf '95%.0s' {1..32})"
-readonly CONCURRENT_SESSION_B_CSRF="$(printf '96%.0s' {1..32})"
+readonly CONCURRENT_SESSION_A_HASH="$(printf 'ca01%.0s' {1..16})"
+readonly CONCURRENT_SESSION_A_CSRF="$(printf 'ca02%.0s' {1..16})"
+readonly CONCURRENT_SESSION_A_ROTATED_HASH="$(printf 'ca03%.0s' {1..16})"
+readonly CONCURRENT_SESSION_A_ROTATED_CSRF="$(printf 'ca04%.0s' {1..16})"
+readonly CONCURRENT_SESSION_B_HASH="$(printf 'ca05%.0s' {1..16})"
+readonly CONCURRENT_SESSION_B_CSRF="$(printf 'ca06%.0s' {1..16})"
 
 query_as "$RUNTIME_ROLE" "SELECT iam.create_session('${CONCURRENT_SESSION_A_ID}', '${SUBJECT_A}', decode('${CONCURRENT_SESSION_A_HASH}','hex'), decode('${CONCURRENT_SESSION_A_CSRF}','hex'), now() + interval '1 hour')" >/dev/null
 query_as "$RUNTIME_ROLE" "SELECT iam.create_session('${CONCURRENT_SESSION_B_ID}', '${SUBJECT_A}', decode('${CONCURRENT_SESSION_B_HASH}','hex'), decode('${CONCURRENT_SESSION_B_CSRF}','hex'), now() + interval '1 hour')" >/dev/null
