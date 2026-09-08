@@ -21,6 +21,8 @@ func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
 	if databaseURL == "" {
 		t.Skip("MACHINA_TENANT_SWITCH_DATABASE_URL is not configured")
 	}
+	// The admin connection is test-only fault injection. The coordinator and
+	// every product operation below continue to execute as machina_runtime.
 	adminDatabaseURL := os.Getenv("MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL")
 	if adminDatabaseURL == "" {
 		t.Fatal("MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL is not configured")
