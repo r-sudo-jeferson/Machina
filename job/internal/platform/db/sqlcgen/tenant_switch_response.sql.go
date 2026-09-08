@@ -7,8 +7,6 @@ package sqlcgen
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getTenantSwitchResponseETag = `-- name: GetTenantSwitchResponseETag :one
@@ -23,11 +21,11 @@ type GetTenantSwitchResponseETagParams struct {
 	RequestHash    string
 }
 
-func (q *Queries) GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (pgtype.Text, error) {
+func (q *Queries) GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (string, error) {
 	row := q.db.QueryRow(ctx, getTenantSwitchResponseETag, arg.IdempotencyKey, arg.RequestHash)
-	var i pgtype.Text
-	err := row.Scan(&i)
-	return i, err
+	var response_etag string
+	err := row.Scan(&response_etag)
+	return response_etag, err
 }
 
 const setTenantSwitchResponseETag = `-- name: SetTenantSwitchResponseETag :one
@@ -41,12 +39,12 @@ SELECT ops.set_tenant_switch_response_etag(
 type SetTenantSwitchResponseETagParams struct {
 	IdempotencyKey string
 	RequestHash    string
-	ResponseETag   string
+	ResponseEtag   string
 }
 
 func (q *Queries) SetTenantSwitchResponseETag(ctx context.Context, arg SetTenantSwitchResponseETagParams) (bool, error) {
-	row := q.db.QueryRow(ctx, setTenantSwitchResponseETag, arg.IdempotencyKey, arg.RequestHash, arg.ResponseETag)
-	var i bool
-	err := row.Scan(&i)
-	return i, err
+	row := q.db.QueryRow(ctx, setTenantSwitchResponseETag, arg.IdempotencyKey, arg.RequestHash, arg.ResponseEtag)
+	var set_response_etag bool
+	err := row.Scan(&set_response_etag)
+	return set_response_etag, err
 }
