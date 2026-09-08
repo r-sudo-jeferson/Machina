@@ -1,12 +1,14 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -14,8 +16,9 @@ import (
 )
 
 var (
-	ErrInvalidEvent  = errors.New("invalid audit event")
-	ErrInvalidWriter = errors.New("invalid audit writer")
+	ErrInvalidEvent            = errors.New("invalid audit event")
+	ErrInvalidWriter           = errors.New("invalid audit writer")
+	ErrInvalidDecisionEvidence = errors.New("invalid audit decision evidence")
 )
 
 type Event struct {
@@ -27,9 +30,30 @@ type Event struct {
 	Decision       string
 	PolicyVersion  int64
 	CorrelationID  pgtype.UUID
-	SafeMetadata   map[string]any
+	SafeMetadata   SafeMetadata
 	PreviousHash   []byte
 	OccurredAt     time.Time
+}
+
+type StoredDecision struct {
+	TenantID       pgtype.UUID
+	ActorSubjectID pgtype.UUID
+	Action         string
+	Decision       string
+	PolicyVersion  int64
+	CorrelationID  pgtype.UUID
+	SafeMetadata   []byte
+}
+
+type DecisionEvidence struct {
+	TenantID       pgtype.UUID
+	ActorSubjectID pgtype.UUID
+	Action         string
+	Decision       string
+	PolicyVersion  int64
+	CorrelationID  pgtype.UUID
+	Latency        time.Duration
+	ReasonCodes    []string
 }
 
 type Writer interface {
@@ -73,10 +97,10 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 	if len(event.PreviousHash) != 0 && len(event.PreviousHash) != sha256.Size {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
-	if event.SafeMetadata == nil {
-		event.SafeMetadata = map[string]any{}
+	if event.SafeMetadata.kind == safeMetadataAuthorizationDecision && event.SafeMetadata.decision != event.Decision {
+		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
-	metadata, err := json.Marshal(event.SafeMetadata)
+	metadata, err := event.SafeMetadata.marshal()
 	if err != nil || !json.Valid(metadata) {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
@@ -109,6 +133,49 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 		PolicyVersion: event.PolicyVersion, CorrelationID: event.CorrelationID, SafeMetadata: metadata,
 		PreviousHash: append([]byte(nil), event.PreviousHash...), EventHash: sum[:],
 		OccurredAt: pgtype.Timestamptz{Time: event.OccurredAt.UTC(), Valid: true},
+	}, nil
+}
+
+func ReconstructDecision(stored StoredDecision) (DecisionEvidence, error) {
+	if !stored.TenantID.Valid || !stored.ActorSubjectID.Valid || !stored.CorrelationID.Valid ||
+		stored.PolicyVersion <= 0 || len(stored.Action) < 1 || len(stored.Action) > 160 ||
+		(stored.Decision != "allow" && stored.Decision != "deny") {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
+
+	trimmed := bytes.TrimSpace(stored.SafeMetadata)
+	if len(trimmed) < 2 || trimmed[0] != '{' || trimmed[len(trimmed)-1] != '}' {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	decoder.DisallowUnknownFields()
+	var payload authorizationDecisionMetadataPayload
+	if err := decoder.Decode(&payload); err != nil {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
+	canonical, err := json.Marshal(payload)
+	if err != nil || !bytes.Equal(trimmed, canonical) {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
+	const maxLatencyMilliseconds = int64((1<<63 - 1) / int64(time.Millisecond))
+	if payload.LatencyMS < 0 || payload.LatencyMS > maxLatencyMilliseconds ||
+		!validAuthorizationMetadataDecision(stored.Decision, payload.ReasonCodes) {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
+
+	return DecisionEvidence{
+		TenantID:       stored.TenantID,
+		ActorSubjectID: stored.ActorSubjectID,
+		Action:         stored.Action,
+		Decision:       stored.Decision,
+		PolicyVersion:  stored.PolicyVersion,
+		CorrelationID:  stored.CorrelationID,
+		Latency:        time.Duration(payload.LatencyMS) * time.Millisecond,
+		ReasonCodes:    append([]string(nil), payload.ReasonCodes...),
 	}, nil
 }
 

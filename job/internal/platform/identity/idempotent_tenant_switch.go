@@ -251,7 +251,11 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	if !ok {
 		return ErrInvalidTenantSwitchOutcome
 	}
-	metadata := map[string]any{
+	auditMetadata, err := audit.NewTenantSwitchMetadata(request.TargetTenantID, switched.ActiveWorkspaceID, response.Active.SessionGeneration)
+	if err != nil {
+		return ErrInvalidTenantSwitchOutcome
+	}
+	outboxPayload := map[string]any{
 		"target_tenant_id":    targetTenantText,
 		"target_workspace_id": targetWorkspaceText,
 		"session_generation":  response.Active.SessionGeneration,
@@ -269,7 +273,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		Decision:       "allow",
 		PolicyVersion:  response.Active.PolicyVersion,
 		CorrelationID:  request.CorrelationID,
-		SafeMetadata:   metadata,
+		SafeMetadata:   auditMetadata,
 		OccurredAt:     eventTime,
 	}); err != nil {
 		return err
@@ -287,7 +291,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		WorkspaceID:   switched.ActiveWorkspaceID,
 		CorrelationID: request.CorrelationID,
 		ActorID:       actorID,
-		Payload:       metadata,
+		Payload:       outboxPayload,
 	}); err != nil {
 		return err
 	}
