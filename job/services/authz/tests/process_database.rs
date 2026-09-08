@@ -15,6 +15,7 @@ const PROBE_ENV: &str = "MACHINA_AUTHZ_PROBE_ADDR";
 const DATABASE_ENV: &str = "MACHINA_AUTHZ_DATABASE_URL";
 const TEST_DATABASE_ENV: &str = "MACHINA_AUTHZ_TEST_DATABASE_URL";
 const TENANT_ID: &str = "00000000-0000-0000-0000-0000000000a1";
+const INVALID_POLICY_TENANT_ID: &str = "00000000-0000-0000-0000-0000000000b2";
 const SNAPSHOT_HASH: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn binary_path() -> &'static str {
@@ -151,6 +152,18 @@ async fn executable_loads_active_tenant_policy_from_postgres_before_becoming_rea
         .await
         .expect_err("malformed tenant identity must be rejected at the gRPC boundary");
     assert_eq!(malformed.code(), Code::InvalidArgument);
+    await_http_status(probe_addr, "/readyz", 200).await;
+
+    let invalid_policy = client
+        .decide(decision_request(
+            INVALID_POLICY_TENANT_ID,
+            "corr-postgres-invalid-policy",
+        ))
+        .await
+        .expect("invalid tenant policy must fail closed without transport failure")
+        .into_inner();
+    assert!(!invalid_policy.allowed);
+    assert_eq!(invalid_policy.reason_codes, vec!["policy_unavailable"]);
     await_http_status(probe_addr, "/readyz", 200).await;
 
     let response = client
