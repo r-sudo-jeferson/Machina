@@ -123,7 +123,7 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 
 	outcome := observability.OutcomeSuccess
 	if result.Replay {
-		outcome = observability.OutcomeReplay
+		outcome = observability.OutcomeSuccess
 	}
 	h.recordTenantSwitchMetric(r.Context(), outcome, startedAt)
 
