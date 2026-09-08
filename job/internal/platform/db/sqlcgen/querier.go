@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (ClaimIdempotencyKeyRow, error)
+	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) (bool, error)
 	ConsumeOIDCAuthorizationAttempt(ctx context.Context, stateHash []byte) (ConsumeOIDCAuthorizationAttemptRow, error)
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (IamMembership, error)
 	CreateOIDCAuthorizationAttempt(ctx context.Context, arg CreateOIDCAuthorizationAttemptParams) error
