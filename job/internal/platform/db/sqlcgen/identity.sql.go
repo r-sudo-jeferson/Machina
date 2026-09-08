@@ -238,7 +238,7 @@ type UpsertSubjectParams struct {
 
 func (q *Queries) UpsertSubject(ctx context.Context, arg UpsertSubjectParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertSubject, arg.SubjectID, arg.ExternalSubject, arg.DisplayName)
-	var session_id pgtype.UUID
-	err := row.Scan(&session_id)
-	return session_id, err
+	var subject_id pgtype.UUID
+	err := row.Scan(&subject_id)
+	return subject_id, err
 }
