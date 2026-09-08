@@ -1,7 +1,7 @@
 -- name: ClaimIdempotencyKey :one
 SELECT
   claim.claim_state::text AS claim_state,
-  claim.response_status::integer AS response_status,
+  COALESCE(claim.response_status, 0)::integer AS response_status,
   claim.response_body::jsonb AS response_body,
   claim.correlation_id::uuid AS correlation_id
 FROM ops.claim_idempotency_key(
