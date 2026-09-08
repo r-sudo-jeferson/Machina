@@ -158,7 +158,7 @@ func validateTenantSwitchHTTPResult(result TenantSwitchResult) error {
 	if result.ResponseStatus != http.StatusOK || len(result.ResponseBody) == 0 ||
 		!json.Valid(result.ResponseBody) || result.ETag == "" ||
 		result.ETag != strongTenantSwitchETag(result.ResponseBody) ||
-		!result.CorrelationID.Valid || result.SessionExpiresAt.IsZero() {
+		!result.CorrelationID.Valid {
 		return ErrInvalidTenantSwitchOutcome
 	}
 	if result.Replay {
@@ -167,7 +167,8 @@ func validateTenantSwitchHTTPResult(result TenantSwitchResult) error {
 		}
 		return nil
 	}
-	if result.SessionToken == "" || result.CSRFToken == "" || result.SessionToken == result.CSRFToken {
+	if result.SessionExpiresAt.IsZero() ||
+		result.SessionToken == "" || result.CSRFToken == "" || result.SessionToken == result.CSRFToken {
 		return ErrInvalidTenantSwitchOutcome
 	}
 	return nil
