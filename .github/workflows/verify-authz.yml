@@ -13,6 +13,7 @@ on:
       - 'job/contracts/proto/authz/v1/authz.proto'
       - 'job/gen/authz/v1/**'
       - 'job/internal/platform/authz/**'
+      - 'job/internal/platform/identity/**'
       - 'job/services/authz/**'
       - 'job/db/migrations/0001_schemas.sql'
       - 'job/db/migrations/0002_identity_tenancy.sql'
