@@ -245,7 +245,7 @@ Expected: PASS with unchanged HTTP responses and cookies.
 - Consumes: Tasks 1–3 and the construction workflows.
 - Produces: a durable evidence record for only the metric-label requirement; Task 6, Gate I, GAUNTLET, candidate freeze, and GitLab promotion remain open.
 
-- [ ] **Step 1: Run the complete local Go gate**
+- [x] **Step 1: Run the complete local Go gate**
 
 Run from `job`:
 
@@ -260,7 +260,13 @@ go test -race -count=1 ./internal/platform/observability ./internal/platform/ide
 
 Expected: every command passes.
 
-- [ ] **Step 2: Publish one atomic implementation commit and observe exact-SHA CI**
+- [x] **Step 2: Publish one atomic implementation commit and observe exact-SHA CI**
+
+Safe code checkpoint `318260aeebbef6f0796ce52f195ba68b16194f51`
+passed Go run/job `34262739613` / `102184487586`, protobuf
+`34262739662` / `102184487915`, PostgreSQL `34262739623` /
+`102184487864`, Rust authorization/performance `34262739609` /
+`102184487491`, and formatting `34262739631` / `102184486932`.
 
 Commit message:
 
