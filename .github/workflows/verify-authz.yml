@@ -8,6 +8,11 @@ on:
       - 'job/Cargo.toml'
       - 'job/Cargo.lock'
       - 'job/rust-toolchain.toml'
+      - 'job/go.mod'
+      - 'job/go.sum'
+      - 'job/contracts/proto/authz/v1/authz.proto'
+      - 'job/gen/authz/v1/**'
+      - 'job/internal/platform/authz/**'
       - 'job/services/authz/**'
       - 'job/db/migrations/0001_schemas.sql'
       - 'job/db/migrations/0002_identity_tenancy.sql'
@@ -44,6 +49,12 @@ jobs:
           printf 'checked_sha=%s\n' "$checked_sha"
           test "$checked_sha" = "$GITHUB_SHA"
 
+      - name: Setup Go 1.27.1
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.1'
+          cache: false
+
       - name: Verify locked Rust 1.98.1 authorization service
         working-directory: job
         run: |
@@ -56,7 +67,7 @@ jobs:
           cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
           cargo +1.98.1 test --locked --workspace --all-targets
 
-      - name: Verify PostgreSQL-backed policy loading
+      - name: Verify PostgreSQL-backed policy loading and Go client interoperability
         working-directory: job
         run: bash scripts/authztest/run.sh
 
