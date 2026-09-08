@@ -26,6 +26,18 @@ pub enum PolicySourceError {
     InvalidSnapshot,
 }
 
+impl PolicySourceError {
+    fn invalidates_source_health(self) -> bool {
+        matches!(Self::from(self), Self::ConnectionUnavailable | Self::QueryFailed)
+    }
+}
+
+impl From<PolicySourceError> for PolicySourceError {
+    fn from(error: PolicySourceError) -> Self {
+        error
+    }
+}
+
 impl fmt::Display for PolicySourceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -140,8 +152,10 @@ impl PostgresPolicySource {
                 Ok(snapshot)
             }
             Err(error) => {
-                self.inner.healthy.store(false, Ordering::Release);
-                self.inner.probes.mark_not_ready();
+                if error.invalidates_source_health() {
+                    self.inner.healthy.store(false, Ordering::Release);
+                    self.inner.probes.mark_not_ready();
+                }
                 Err(error)
             }
         }
