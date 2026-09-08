@@ -2,12 +2,7 @@ use cedar_policy::{Context, EntityUid, Request, RestrictedExpression};
 use machina_authz::evaluator::{DecisionReason, Evaluator};
 use machina_authz::starter::{STARTER_POLICY_VERSION, snapshot};
 
-fn request_for(
-    action: &str,
-    resource: &str,
-    role: Option<&str>,
-    status: Option<&str>,
-) -> Request {
+fn request_for(action: &str, resource: &str, role: Option<&str>, status: Option<&str>) -> Request {
     let mut context = Vec::new();
     if let Some(role) = role {
         context.push((
@@ -37,12 +32,7 @@ fn request_for(
 }
 
 fn context_read_request(role: Option<&str>, status: Option<&str>) -> Request {
-    request_for(
-        "context.read",
-        "PlatformContext::\"active\"",
-        role,
-        status,
-    )
+    request_for("context.read", "PlatformContext::\"active\"", role, status)
 }
 
 fn tenant_switch_request(role: Option<&str>, status: Option<&str>) -> Request {
@@ -89,7 +79,10 @@ fn active_owner_can_switch_tenant() {
         &snapshot,
     );
 
-    assert!(decision.allowed, "active owner must be allowed to switch tenant");
+    assert!(
+        decision.allowed,
+        "active owner must be allowed to switch tenant"
+    );
     assert!(decision.reason_codes.is_empty());
 }
 
@@ -102,7 +95,10 @@ fn active_member_can_switch_tenant() {
         &snapshot,
     );
 
-    assert!(decision.allowed, "active member must be allowed to switch tenant");
+    assert!(
+        decision.allowed,
+        "active member must be allowed to switch tenant"
+    );
     assert!(decision.reason_codes.is_empty());
 }
 
