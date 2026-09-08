@@ -10,15 +10,15 @@ import (
 )
 
 type fakeTenantContextQueries struct {
-	membership       sqlcgen.IamMembership
-	membershipErr    error
-	tenant           sqlcgen.IamTenant
-	tenantErr        error
-	workspace        sqlcgen.IamWorkspace
-	workspaceErr     error
-	membershipCalls  int
-	tenantCalls      int
-	workspaceCalls   int
+	membership      sqlcgen.IamMembership
+	membershipErr   error
+	tenant          sqlcgen.IamTenant
+	tenantErr       error
+	workspace       sqlcgen.IamWorkspace
+	workspaceErr    error
+	membershipCalls int
+	tenantCalls     int
+	workspaceCalls  int
 }
 
 func (q *fakeTenantContextQueries) GetMembership(_ context.Context, _ sqlcgen.GetMembershipParams) (sqlcgen.IamMembership, error) {
