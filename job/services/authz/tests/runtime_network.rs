@@ -12,6 +12,8 @@ use machina_authz::starter::{STARTER_POLICY_HASH, STARTER_POLICY_VERSION, snapsh
 use tokio::sync::watch;
 use tonic::transport::Channel;
 
+const TENANT_ID: &str = "00000000-0000-0000-0000-0000000000a1";
+
 fn reserve_addr() -> SocketAddr {
     let listener = StdTcpListener::bind("127.0.0.1:0").expect("reserve local port");
     let addr = listener.local_addr().expect("reserved local address");
@@ -126,7 +128,7 @@ async fn grpc_listener_serves_starter_authorization_over_real_network() {
     let grpc_addr = config.grpc_addr();
     let probes = ProbeState::new();
     let mut cache = PolicyCache::new();
-    cache.insert("tenant-a", snapshot().expect("starter policy snapshot"));
+    cache.insert(TENANT_ID, snapshot().expect("starter policy snapshot"));
     let handler = AuthorizationServiceHandler::new(cache);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -136,7 +138,7 @@ async fn grpc_listener_serves_starter_authorization_over_real_network() {
     let response = client
         .decide(DecisionRequest {
             subject_id: "subject-a".to_owned(),
-            tenant_id: "tenant-a".to_owned(),
+            tenant_id: TENANT_ID.to_owned(),
             workspace_id: "workspace-a".to_owned(),
             action: "context.read".to_owned(),
             resource_type: "PlatformContext".to_owned(),
