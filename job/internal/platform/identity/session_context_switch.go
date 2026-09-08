@@ -17,7 +17,7 @@ var (
 )
 
 type sessionContextSwitcher interface {
-	SwitchContext(context.Context, string, string, string, pgtype.UUID, pgtype.UUID) (sqlcgen.SwitchSessionContextRow, error)
+	SwitchContext(context.Context, string, string, string, pgtype.UUID) (sqlcgen.SwitchSessionContextRow, error)
 }
 
 type SessionContextSwitchService struct {
@@ -47,7 +47,6 @@ func (s *SessionContextSwitchService) Switch(
 	ctx context.Context,
 	presentedSessionToken string,
 	targetTenantID pgtype.UUID,
-	targetWorkspaceID pgtype.UUID,
 ) (SwitchedSessionContext, error) {
 	if s == nil || s.sessions == nil || s.newToken == nil {
 		return SwitchedSessionContext{}, ErrInvalidSessionContextSwitchConfig
@@ -55,7 +54,7 @@ func (s *SessionContextSwitchService) Switch(
 	if presentedSessionToken == "" {
 		return SwitchedSessionContext{}, ErrMissingSessionToken
 	}
-	if !targetTenantID.Valid || !targetWorkspaceID.Valid {
+	if !targetTenantID.Valid {
 		return SwitchedSessionContext{}, ErrInvalidTargetContext
 	}
 
@@ -80,13 +79,12 @@ func (s *SessionContextSwitchService) Switch(
 		replacementSessionToken,
 		replacementCSRFToken,
 		targetTenantID,
-		targetWorkspaceID,
 	)
 	if err != nil {
 		return SwitchedSessionContext{}, fmt.Errorf("switch authenticated session context: %w", err)
 	}
 	if !row.SessionID.Valid || !row.ActiveTenantID.Valid || !row.ActiveWorkspaceID.Valid || !row.ExpiresAt.Valid ||
-		row.ActiveTenantID != targetTenantID || row.ActiveWorkspaceID != targetWorkspaceID {
+		row.ActiveTenantID != targetTenantID {
 		return SwitchedSessionContext{}, ErrInvalidSessionContextSwitchResult
 	}
 
