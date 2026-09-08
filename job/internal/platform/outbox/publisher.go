@@ -13,18 +13,18 @@ import (
 
 var (
 	ErrInvalidEnvelope = errors.New("invalid outbox envelope")
-	ErrInvalidWriter = errors.New("invalid outbox writer")
+	ErrInvalidWriter   = errors.New("invalid outbox writer")
 )
 
 type Envelope struct {
-	EventID       pgtype.UUID `json:"event_id"`
-	EventType     string     `json:"event_type"`
-	EventVersion  int32      `json:"event_version"`
-	OccurredAt    time.Time  `json:"occurred_at"`
-	TenantID      pgtype.UUID `json:"tenant_id"`
-	WorkspaceID   pgtype.UUID `json:"workspace_id,omitempty"`
-	CorrelationID pgtype.UUID `json:"correlation_id"`
-	ActorID       pgtype.UUID `json:"actor_id"`
+	EventID       pgtype.UUID    `json:"event_id"`
+	EventType     string         `json:"event_type"`
+	EventVersion  int32          `json:"event_version"`
+	OccurredAt    time.Time      `json:"occurred_at"`
+	TenantID      pgtype.UUID    `json:"tenant_id"`
+	WorkspaceID   pgtype.UUID    `json:"workspace_id,omitempty"`
+	CorrelationID pgtype.UUID    `json:"correlation_id"`
+	ActorID       pgtype.UUID    `json:"actor_id"`
 	Payload       map[string]any `json:"payload"`
 }
 
