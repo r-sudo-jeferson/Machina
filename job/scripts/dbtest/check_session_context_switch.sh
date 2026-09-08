@@ -45,14 +45,15 @@ INSERT INTO iam.sessions (id, subject_id, session_token_hash, csrf_token_hash, e
   ('${EXPIRED_SESSION_ID}', '${SUBJECT_A}', decode('${EXPIRED_OLD_HASH}', 'hex'), decode('${EXPIRED_OLD_CSRF_HASH}', 'hex'), now() - interval '1 minute');
 SQL
 
-switch_result="$(query_as "$RUNTIME_ROLE" "SELECT session_id::text || ':' || active_tenant_id::text || ':' || active_workspace_id::text FROM iam.switch_session_context(decode('${SWITCH_OLD_HASH}', 'hex'), decode('${SWITCH_NEW_HASH}', 'hex'), decode('${SWITCH_NEW_CSRF_HASH}', 'hex'), '${TENANT_B}', '${WORKSPACE_B}')")"
-expect_equals "${SWITCH_SESSION_ID}:${TENANT_B}:${WORKSPACE_B}" "$switch_result" 'valid session context switch did not return authoritative target context'
+switch_expiry_before="$(query_as postgres "SELECT extract(epoch FROM expires_at)::bigint FROM iam.sessions WHERE id='${SWITCH_SESSION_ID}'")"
+switch_result="$(query_as "$RUNTIME_ROLE" "SELECT session_id::text || ':' || active_tenant_id::text || ':' || active_workspace_id::text || ':' || extract(epoch FROM expires_at)::bigint::text FROM iam.switch_session_context(decode('${SWITCH_OLD_HASH}', 'hex'), decode('${SWITCH_NEW_HASH}', 'hex'), decode('${SWITCH_NEW_CSRF_HASH}', 'hex'), '${TENANT_B}', '${WORKSPACE_B}')")"
+expect_equals "${SWITCH_SESSION_ID}:${TENANT_B}:${WORKSPACE_B}:${switch_expiry_before}" "$switch_result" 'valid session context switch did not return authoritative target context and preserved expiry'
 
 old_token_count="$(query_as "$RUNTIME_ROLE" "SELECT count(*) FROM iam.get_active_session(decode('${SWITCH_OLD_HASH}', 'hex'))")"
 expect_equals '0' "$old_token_count" 'session context switch left the pre-switch token active'
 
-new_context="$(query_as "$RUNTIME_ROLE" "SELECT active_tenant_id::text || ':' || active_workspace_id::text FROM iam.get_active_session(decode('${SWITCH_NEW_HASH}', 'hex'))")"
-expect_equals "${TENANT_B}:${WORKSPACE_B}" "$new_context" 'rotated session does not carry the validated server-side context'
+new_context="$(query_as "$RUNTIME_ROLE" "SELECT active_tenant_id::text || ':' || active_workspace_id::text || ':' || extract(epoch FROM expires_at)::bigint::text FROM iam.get_active_session(decode('${SWITCH_NEW_HASH}', 'hex'))")"
+expect_equals "${TENANT_B}:${WORKSPACE_B}:${switch_expiry_before}" "$new_context" 'rotated session does not carry validated context with unchanged absolute expiry'
 
 docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$DB_NAME" <<SQL
 UPDATE iam.memberships
