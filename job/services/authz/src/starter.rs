@@ -9,9 +9,18 @@ pub const STARTER_POLICY_HASH: &str =
 const STARTER_SCHEMA: &str = r#"
 entity User = {};
 entity PlatformContext = {};
+entity Tenant = {};
 action "context.read" appliesTo {
     principal: User,
     resource: PlatformContext,
+    context: {
+        starter_role: String,
+        membership_status: String
+    }
+};
+action "tenant.switch" appliesTo {
+    principal: User,
+    resource: Tenant,
     context: {
         starter_role: String,
         membership_status: String
@@ -33,6 +42,24 @@ permit(
     principal,
     action == Action::"context.read",
     resource == PlatformContext::"active"
+) when {
+    context.membership_status == "active" &&
+    context.starter_role == "member"
+};
+
+permit(
+    principal,
+    action == Action::"tenant.switch",
+    resource is Tenant
+) when {
+    context.membership_status == "active" &&
+    context.starter_role == "owner"
+};
+
+permit(
+    principal,
+    action == Action::"tenant.switch",
+    resource is Tenant
 ) when {
     context.membership_status == "active" &&
     context.starter_role == "member"

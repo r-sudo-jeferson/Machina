@@ -2,13 +2,27 @@
   "": {
     "entityTypes": {
       "User": {},
-      "PlatformContext": {}
+      "PlatformContext": {},
+      "Tenant": {}
     },
     "actions": {
       "context.read": {
         "appliesTo": {
           "principalTypes": ["User"],
           "resourceTypes": ["PlatformContext"],
+          "context": {
+            "type": "Record",
+            "attributes": {
+              "starter_role": {"type": "String"},
+              "membership_status": {"type": "String"}
+            }
+          }
+        }
+      },
+      "tenant.switch": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["Tenant"],
           "context": {
             "type": "Record",
             "attributes": {
