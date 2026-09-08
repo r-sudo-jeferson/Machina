@@ -43,7 +43,7 @@ recovery capability is persisted in either record.
 
 ## Data boundary
 
-Migration `0014` will add `iam.tenant_switch_idempotency_scopes` with:
+Migration `0015` will add `iam.tenant_switch_idempotency_scopes` with:
 
 - `session_id` and `idempotency_key` as the primary key;
 - the canonical operation name and request-body hash;
@@ -54,9 +54,10 @@ Migration `0014` will add `iam.tenant_switch_idempotency_scopes` with:
   while any mapping remains; a narrow cleanup deletes expired mappings before a
   future tenant-deletion workflow proceeds.
 
-Migration `0014` will also add a monotonic `generation` to `iam.sessions`.
-Session rotation and tenant switch increment it atomically and return the new
-value. A completed mapping is replayable only while its recorded result
+Migration `0014` adds a monotonic `generation` to `iam.sessions`.
+A table trigger advances it atomically for every credential/context change;
+existing rotation and switch result shapes remain compatible. The scope binder
+and completion function read the locked generation. A completed mapping is replayable only while its recorded result
 generation is still the current session generation. Logout, expiry, revocation,
 or any later rotation/switch invalidates replay of the historical outcome.
 
