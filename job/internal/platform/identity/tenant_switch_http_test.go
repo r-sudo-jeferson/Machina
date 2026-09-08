@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
+	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -380,21 +381,10 @@ func assertTenantSwitchHTTPMetric(t *testing.T, reader *sdkmetric.ManualReader, 
 	if !ok || len(duration.DataPoints) != 1 || duration.DataPoints[0].Count != 1 || duration.DataPoints[0].Sum != wantElapsed.Seconds() {
 		t.Fatalf("operation duration = %#v", collected["machina.operation.duration"])
 	}
-	for name, attributes := range map[string]metricdata.Extrema[float64]{} {
-		_ = name
-		_ = attributes
-	}
-	for name, set := range map[string]metricdata.Aggregation{
-		"count":    count,
-		"duration": duration,
+	for name, labels := range map[string][]any{
+		"count":    tenantSwitchHTTPMetricLabels(count.DataPoints[0].Attributes),
+		"duration": tenantSwitchHTTPMetricLabels(duration.DataPoints[0].Attributes),
 	} {
-		var labels []any
-		switch data := set.(type) {
-		case metricdata.Sum[int64]:
-			labels = tenantSwitchHTTPMetricLabels(data.DataPoints[0].Attributes)
-		case metricdata.Histogram[float64]:
-			labels = tenantSwitchHTTPMetricLabels(data.DataPoints[0].Attributes)
-		}
 		if len(labels) != 4 || labels[0] != observability.MetricOperation || labels[1] != string(observability.OperationTenantSwitch) ||
 			labels[2] != observability.MetricOutcome || labels[3] != string(wantOutcome) {
 			t.Fatalf("%s metric labels = %#v", name, labels)
@@ -435,7 +425,11 @@ func collectTenantSwitchHTTPMetrics(t *testing.T, reader *sdkmetric.ManualReader
 	return got
 }
 
-func tenantSwitchHTTPMetricLabels(set interface{ ToSlice() []interface{} }) []any {
-	_ = set
-	return nil
+func tenantSwitchHTTPMetricLabels(set attribute.Set) []any {
+	labels := (&set).ToSlice()
+	got := make([]any, 0, len(labels)*2)
+	for _, label := range labels {
+		got = append(got, string(label.Key), label.Value.AsString())
+	}
+	return got
 }
