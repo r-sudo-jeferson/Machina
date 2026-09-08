@@ -58,3 +58,11 @@ SET theme = EXCLUDED.theme,
     preferences = EXCLUDED.preferences,
     updated_at = now()
 RETURNING tenant_id, subject_id, theme, locale, preferences, updated_at;
+
+-- name: GetActivePolicySnapshot :one
+SELECT version, snapshot_hash
+FROM authz.policy_snapshots
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND status = 'active'
+ORDER BY version DESC
+LIMIT 1;
