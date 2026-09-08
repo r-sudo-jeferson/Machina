@@ -7,6 +7,7 @@ on:
     paths:
       - 'job/db/migrations/**'
       - 'job/scripts/dbtest/**'
+      - 'job/internal/platform/audit/**'
       - 'job/internal/platform/db/**'
       - 'job/internal/platform/identity/**'
       - 'job/go.mod'
@@ -44,6 +45,6 @@ jobs:
           go-version: '1.27.1'
           cache: false
 
-      - name: Verify PostgreSQL 18.6 tenancy and identity kernel
+      - name: Verify PostgreSQL 18.6 tenancy identity and audit kernel
         working-directory: job
-        run: MACHINA_RUN_TENANT_SWITCH_GO_INTEGRATION=1 bash scripts/dbtest/run.sh
+        run: MACHINA_RUN_TENANT_SWITCH_GO_INTEGRATION=1 MACHINA_RUN_AUDIT_GO_INTEGRATION=1 bash scripts/dbtest/run.sh
