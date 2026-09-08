@@ -12,8 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	authzv1 "github.com/r-sudo-jeferson/Machina/job/gen/authz/v1"
+	platformauthz "github.com/r-sudo-jeferson/Machina/job/internal/platform/authz"
 	platformdb "github.com/r-sudo-jeferson/Machina/job/internal/platform/db"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/identity"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
@@ -27,6 +31,10 @@ func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
 	if adminDatabaseURL == "" {
 		t.Fatal("MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL is not configured")
 	}
+	authzGRPCAddr := os.Getenv("MACHINA_TENANT_SWITCH_AUTHZ_GRPC_ADDR")
+	if authzGRPCAddr == "" {
+		t.Fatal("MACHINA_TENANT_SWITCH_AUTHZ_GRPC_ADDR is not configured")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
@@ -34,6 +42,15 @@ func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
 	defer pool.Close()
 	adminPool := tenantSwitchIntegrationPool(t, ctx, adminDatabaseURL, 2)
 	defer adminPool.Close()
+	authzConn, err := grpc.NewClient(authzGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("create tenant-switch authorization gRPC client: %v", err)
+	}
+	defer func() { _ = authzConn.Close() }()
+	authorizer := platformauthz.NewClient(
+		platformauthz.NewGRPCTransport(authzv1.NewAuthorizationServiceClient(authzConn)),
+		2*time.Second,
+	)
 
 	const (
 		subjectID = "10000000-0000-0000-0000-0000000000a1"
@@ -51,7 +68,7 @@ func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("create integration session: %v", err)
 	}
 
-	coordinator, err := identity.NewTenantSwitchCoordinator(platformdb.NewTransactor(pool))
+	coordinator, err := identity.NewTenantSwitchCoordinator(platformdb.NewTransactor(pool), authorizer)
 	if err != nil {
 		t.Fatalf("NewTenantSwitchCoordinator() error = %v", err)
 	}

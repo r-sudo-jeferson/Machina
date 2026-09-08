@@ -12,6 +12,8 @@ readonly SUBJECT_B='10000000-0000-0000-0000-0000000000b2'
 readonly WORKSPACE_A='20000000-0000-0000-0000-0000000000a1'
 readonly WORKSPACE_B='20000000-0000-0000-0000-0000000000b2'
 readonly CONTAINER="machina-pg-${GITHUB_RUN_ID:-local}-$$"
+readonly AUTHZ_SCHEMA_FIXTURE="services/authz/tests/fixtures/starter-schema.json"
+readonly AUTHZ_POLICY_FIXTURE="services/authz/tests/fixtures/starter.cedar"
 TENANT_SWITCH_INTEGRATION_DIR=''
 AUDIT_INTEGRATION_DIR=''
 
@@ -174,17 +176,74 @@ run_go_tenant_switch_integration() {
   [[ "${MACHINA_RUN_TENANT_SWITCH_GO_INTEGRATION:-0}" == '1' ]] || return 0
   command -v go >/dev/null 2>&1 || fail 'Go is required for the tenant-switch integration boundary'
 
+  local authz_binary="${MACHINA_TENANT_SWITCH_AUTHZ_BINARY:-}"
+  [[ -n "$authz_binary" && -x "$authz_binary" ]] || fail 'MACHINA_TENANT_SWITCH_AUTHZ_BINARY must reference an executable Rust authorization service'
+  [[ -f "$AUTHZ_SCHEMA_FIXTURE" ]] || fail "tenant-switch Cedar schema fixture is missing: $AUTHZ_SCHEMA_FIXTURE"
+  [[ -f "$AUTHZ_POLICY_FIXTURE" ]] || fail "tenant-switch Cedar policy fixture is missing: $AUTHZ_POLICY_FIXTURE"
+
+  local schema_json cedar_policies
+  schema_json="$(<"$AUTHZ_SCHEMA_FIXTURE")"
+  cedar_policies="$(<"$AUTHZ_POLICY_FIXTURE")"
+  docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$DB_NAME" \
+    -v schema_json="$schema_json" \
+    -v cedar_policies="$cedar_policies" <<'SQL'
+UPDATE authz.policy_snapshots
+SET cedar_schema = :'schema_json'::jsonb,
+    cedar_policies = :'cedar_policies'
+WHERE tenant_id IN (
+  '00000000-0000-0000-0000-0000000000a1'::uuid,
+  '00000000-0000-0000-0000-0000000000b2'::uuid
+)
+  AND version = 1
+  AND status = 'active';
+SQL
+  expect_equals '2' "$(query_as postgres "SELECT count(*) FROM authz.policy_snapshots WHERE tenant_id IN ('${TENANT_A}','${TENANT_B}') AND version=1 AND status='active' AND cedar_schema <> '{}'::jsonb AND cedar_policies LIKE '%tenant.switch%'")" 'tenant-switch integration did not install the real Cedar fixtures'
+
   local integration_binary
   TENANT_SWITCH_INTEGRATION_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/machina-tenant-switch-go.XXXXXX")"
   integration_binary="${TENANT_SWITCH_INTEGRATION_DIR}/identity.test"
   go test -c -o "$integration_binary" ./internal/platform/identity
   docker cp "$integration_binary" "$CONTAINER:/tmp/machina-tenant-switch-identity.test" >/dev/null
+  docker cp "$authz_binary" "$CONTAINER:/tmp/machina-authz" >/dev/null
+  docker exec "$CONTAINER" chmod 0555 /tmp/machina-authz
+
+  docker exec -d "$CONTAINER" bash -c "echo \$\$ >/tmp/machina-authz.pid; exec env MACHINA_AUTHZ_GRPC_ADDR=127.0.0.1:50051 MACHINA_AUTHZ_PROBE_ADDR=127.0.0.1:50052 MACHINA_AUTHZ_DATABASE_URL='postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2' /tmp/machina-authz >/tmp/machina-authz.log 2>&1"
+
+  local ready=0
+  for _ in $(seq 1 100); do
+    if docker exec "$CONTAINER" bash -c 'exec 3<>/dev/tcp/127.0.0.1/50051' >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    if ! docker exec "$CONTAINER" bash -c 'test -s /tmp/machina-authz.pid && kill -0 "$(cat /tmp/machina-authz.pid)"' >/dev/null 2>&1; then
+      docker exec "$CONTAINER" cat /tmp/machina-authz.log >&2 || true
+      fail 'Rust authorization service exited before becoming ready'
+    fi
+    sleep 0.05
+  done
+  if [[ "$ready" != '1' ]]; then
+    docker exec "$CONTAINER" cat /tmp/machina-authz.log >&2 || true
+    fail 'Rust authorization gRPC listener did not become ready on loopback'
+  fi
+
+  local integration_exit
+  set +e
   docker exec "$CONTAINER" env \
     MACHINA_TENANT_SWITCH_DATABASE_URL="postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
     MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL="postgresql://postgres@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
+    MACHINA_TENANT_SWITCH_AUTHZ_GRPC_ADDR="127.0.0.1:50051" \
     /tmp/machina-tenant-switch-identity.test \
     -test.run '^TestTenantSwitchCoordinatorAgainstPostgreSQL$' \
     -test.v
+  integration_exit=$?
+  set -e
+
+  docker exec "$CONTAINER" bash -c 'kill -TERM "$(cat /tmp/machina-authz.pid)"' >/dev/null 2>&1 || true
+  if [[ "$integration_exit" -ne 0 ]]; then
+    docker exec "$CONTAINER" cat /tmp/machina-authz.log >&2 || true
+    fail "tenant-switch Go/Rust/PostgreSQL integration failed with exit ${integration_exit}"
+  fi
+
   rm -rf -- "$TENANT_SWITCH_INTEGRATION_DIR"
   TENANT_SWITCH_INTEGRATION_DIR=''
 }
