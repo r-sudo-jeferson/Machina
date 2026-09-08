@@ -57,6 +57,7 @@ query_as "$RUNTIME_ROLE" "SELECT iam.create_session('${SCOPE_SESSION_ID}','${SUB
 # the exact returned deadline, rotate through the existing server-validated
 # switch boundary, complete the receipt, and finish the pair in one commit.
 first_flow_log="$(mktemp "${RUNNER_TEMP:-/tmp}/machina-scope-first.XXXXXX")"
+set +e
 docker exec -i "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$RUNTIME_ROLE" -d "$DB_NAME" >"$first_flow_log" 2>&1 <<SQL
 BEGIN;
 SELECT * FROM iam.bind_tenant_switch_idempotency(
@@ -99,6 +100,13 @@ SELECT * FROM iam.finish_tenant_switch_idempotency(
 SELECT 'first:' || :'bind_mapping_state' || ':' || :'claim_claim_state' || ':' || :'switched_session_id' || ':' || :'finished_finished';
 COMMIT;
 SQL
+first_flow_exit=$?
+set -e
+if [[ "$first_flow_exit" -ne 0 ]]; then
+  cat "$first_flow_log" >&2
+  rm -f "$first_flow_log"
+  fail "first tenant-switch scope transaction failed with exit ${first_flow_exit}"
+fi
 first_flow_result="$(tail -n 1 "$first_flow_log")"
 if [[ "$first_flow_result" != "first:claimed:claimed:${SCOPE_SESSION_ID}:t" ]]; then
   cat "$first_flow_log" >&2
