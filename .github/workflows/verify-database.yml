@@ -7,6 +7,10 @@ on:
     paths:
       - 'job/db/migrations/**'
       - 'job/scripts/dbtest/**'
+      - 'job/internal/platform/db/**'
+      - 'job/internal/platform/identity/**'
+      - 'job/go.mod'
+      - 'job/go.sum'
       - '.github/workflows/verify-database.yml'
 
 permissions:
@@ -34,6 +38,12 @@ jobs:
           printf 'checked_sha=%s\n' "$checked_sha"
           test "$checked_sha" = "$GITHUB_SHA"
 
+      - name: Setup Go 1.27.1
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.1'
+          cache: false
+
       - name: Verify PostgreSQL 18.6 tenancy and identity kernel
         working-directory: job
-        run: bash scripts/dbtest/run.sh
+        run: MACHINA_RUN_TENANT_SWITCH_GO_INTEGRATION=1 bash scripts/dbtest/run.sh

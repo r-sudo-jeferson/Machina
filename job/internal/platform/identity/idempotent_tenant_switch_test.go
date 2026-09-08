@@ -428,3 +428,20 @@ func TestTenantSwitchCoordinatorTreatsCommitUncertaintyAsReauthenticationBoundar
 		t.Fatalf("newTenantSwitchCoordinator() error = %v", coordinatorErr)
 	}
 	got, err := coordinator.Switch(context.Background(), validTenantSwitchRequest())
+	if !errors.Is(err, ErrUncertainTenantSwitchCommit) || !errors.Is(err, db.ErrTransactionCommit) {
+		t.Fatalf("Switch() error = %v, want uncertain commit and underlying commit marker", err)
+	}
+	if !reflect.DeepEqual(got, TenantSwitchResult{}) {
+		t.Fatalf("uncertain commit returned secrets/result = %#v", got)
+	}
+	if unit.switchCalls != 1 || unit.completeCalls != 1 || unit.finishCalls != 1 {
+		t.Fatalf("commit uncertainty did not execute the callback before discarding pending result: switch:%d complete:%d finish:%d", unit.switchCalls, unit.completeCalls, unit.finishCalls)
+	}
+}
+
+func containsSecret(body []byte, secret string) bool {
+	if secret == "" {
+		return false
+	}
+	return strings.Contains(string(body), secret)
+}

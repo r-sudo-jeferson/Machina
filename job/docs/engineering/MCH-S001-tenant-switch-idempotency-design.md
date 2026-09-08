@@ -78,9 +78,11 @@ The function will use the existing transaction-local cross-tenant capability
 only inside its security-definer body. Direct runtime reads remain revoked.
 The binder chooses one immutable deadline for each claim generation:
 `min(database wall-clock + 24 hours, session expiry)`. It returns that exact
-deadline, and `idempotency.Store.Claim` must use it unchanged. The generic claim
-result will expose the database record's expiry so the coordinator can require
-exact equality. A live mapping paired with a missing, newly claimed, expired, or
+deadline, and `idempotency.Store.Claim` must use it unchanged. The generic
+idempotency contract remains backward-compatible and does not expose a new
+expiry field; the security-definer binder and finish boundary read and require
+exact equality against the stored receipt before the coordinator calls the
+generic claim. A live mapping paired with a missing, newly claimed, expired, or
 differently expiring tenant receipt is an invalid state and fails closed.
 
 Retries never extend the deadline. After it expires, the same active session

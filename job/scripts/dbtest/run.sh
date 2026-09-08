@@ -12,6 +12,7 @@ readonly SUBJECT_B='10000000-0000-0000-0000-0000000000b2'
 readonly WORKSPACE_A='20000000-0000-0000-0000-0000000000a1'
 readonly WORKSPACE_B='20000000-0000-0000-0000-0000000000b2'
 readonly CONTAINER="machina-pg-${GITHUB_RUN_ID:-local}-$$"
+TENANT_SWITCH_INTEGRATION_DIR=''
 
 readonly MIGRATIONS=(
   db/migrations/0001_schemas.sql
@@ -37,6 +38,9 @@ fail() {
 }
 
 cleanup() {
+  if [[ -n "$TENANT_SWITCH_INTEGRATION_DIR" ]]; then
+    rm -rf -- "$TENANT_SWITCH_INTEGRATION_DIR"
+  fi
   docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
@@ -155,6 +159,24 @@ mapfile -t pool_lines <<< "$pool_reset"
 expect_equals '<cleared>' "${pool_lines[-2]}" 'transaction-local tenant context did not clear after commit'
 expect_equals '0' "${pool_lines[-1]}" 'same backend connection leaked previous tenant rows after commit'
 
+run_go_tenant_switch_integration() {
+  [[ "${MACHINA_RUN_TENANT_SWITCH_GO_INTEGRATION:-0}" == '1' ]] || return 0
+  command -v go >/dev/null 2>&1 || fail 'Go is required for the tenant-switch integration boundary'
+
+  local integration_binary
+  TENANT_SWITCH_INTEGRATION_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/machina-tenant-switch-go.XXXXXX")"
+  integration_binary="${TENANT_SWITCH_INTEGRATION_DIR}/identity.test"
+  go test -c -o "$integration_binary" ./internal/platform/identity
+  docker cp "$integration_binary" "$CONTAINER:/tmp/machina-tenant-switch-identity.test" >/dev/null
+  docker exec "$CONTAINER" env \
+    MACHINA_TENANT_SWITCH_DATABASE_URL="postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
+    /tmp/machina-tenant-switch-identity.test \
+    -test.run '^TestTenantSwitchCoordinatorAgainstPostgreSQL$' \
+    -test.v
+  rm -rf -- "$TENANT_SWITCH_INTEGRATION_DIR"
+  TENANT_SWITCH_INTEGRATION_DIR=''
+}
+
 source scripts/dbtest/check_last_owner.sh
 source scripts/dbtest/check_identity_session_boundary.sh
 source scripts/dbtest/check_session_context_boundary.sh
@@ -164,6 +186,7 @@ source scripts/dbtest/check_concurrent_sessions.sh
 source scripts/dbtest/check_session_context_switch.sh
 source scripts/dbtest/check_session_generation.sh
 source scripts/dbtest/check_tenant_switch_idempotency_scope.sh
+run_go_tenant_switch_integration
 source scripts/dbtest/check_idempotency_boundary.sh
 
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
