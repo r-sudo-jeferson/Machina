@@ -1,6 +1,6 @@
 # MCH-S001 Tenant-Switch Idempotency Design
 
-**Status:** Approved direction; design review incorporated; implementation pending  
+**Status:** Approved direction; Tasks 1–5 implemented on the construction branch; independent review and GAUNTLET pending
 **Slice:** `MCH-S001@1.0.0`  
 **Binding:** `FORGE-OPS-HIGHEND-v1.0.0`  
 **Decision:** strict session-token invalidation with reauthentication after a lost cookie response
@@ -163,13 +163,13 @@ is intentional for the selected strict-invalidation policy.
 - Preserve `errors.Is` through every wrapper and use typed errors for scope
   conflict, in-progress work, invalid replay, and uncertain commit.
 
-The stored outcome contains only the authoritative active tenant ID, active
-workspace ID, session generation, and session expiry. It never contains browser
-secrets. It is explicitly a historical mutation outcome and must not be enriched
-with the live authenticated-context resolver, which could combine facts from
-different points in time. Before the HTTP endpoint can claim exact replay, it
-must store and replay one immutable full non-secret OpenAPI response and ETag
-snapshot, or adopt another separately approved and tested stale-response policy.
+The stored outcome is one immutable full non-secret OpenAPI response and ETag
+snapshot. It includes the authoritative identity, active tenant and workspace,
+capabilities, policy version, available tenants, and session expiry resolved
+inside the mutation transaction. It never contains browser secrets. It is
+explicitly a historical mutation outcome and must not be enriched with the live
+authenticated-context resolver, which could combine facts from different points
+in time.
 
 ## Observable retry behavior
 

@@ -118,11 +118,11 @@ return pending, nil
 
 **Files:** tenant-switch HTTP handler/tests, existing OpenAPI contract, identity coordinator response adapter, audit/outbox packages according to the parent Slice plan.
 
-- [ ] Persist the complete non-secret OpenAPI response and ETag snapshot inside the mutation transaction. Resolve all identity/context/policy facts using transaction-bound dependencies; never merge replayed coordinates with a fresh context resolver.
-- [ ] Insert correlated audit/outbox events in that transaction; replay does not duplicate mutation events. Failure of either insertion rolls back session rotation and receipt.
-- [ ] Test old/new session-CSRF combinations through the real middleware, RFC9457 failures, original correlation, no-store responses, and absent `Set-Cookie` on replay/errors.
+- [x] Persist the complete non-secret OpenAPI response and ETag snapshot inside the mutation transaction. Resolve all identity/context/policy facts using transaction-bound dependencies; never merge replayed coordinates with a fresh context resolver.
+- [x] Insert correlated audit/outbox events in that transaction; replay does not duplicate mutation events. Failure of either insertion rolls back session rotation and receipt.
+- [x] Test old/new session-CSRF combinations through the real middleware, RFC9457 failures, original correlation, no-store responses, and absent `Set-Cookie` on replay/errors.
 - [ ] Independent critique maps each design requirement to Go/SQL/HTTP evidence. Run full Slice verification and GAUNTLET only after the remaining parent-plan requirements are implemented.
 
 ## Execution record
 
-Tasks 1–4 are implemented and verified on the construction branch through candidate `714b22056d83dedabc8f51375e4ff34d8b3494ff`; the branch remains `IN_PROGRESS` because the HTTP response/audit/outbox integration, GAUNTLET, candidate freeze, and exact GitLab promotion are still pending.
+Tasks 1–4 are implemented and verified on the construction branch through candidate `714b22056d83dedabc8f51375e4ff34d8b3494ff`. Task 5 implementation and executor-side verification are present through `debc419be254e6619f4f8af8becb26e8668553a2`: complete immutable response/ETag replay, transaction-bound audit/outbox with failure rollback, middleware credential-pair coverage, RFC 9457 failures, and no-cookie replay/error behavior. GitHub runs `34260303193` / job `102176296216` (Go 1.27.1) and `34260303220` / job `102176296319` (PostgreSQL 18.6 plus real Go integration) passed on that exact SHA; debug formatting run `34260303071` / job `102176295591` also passed. Local race verification passed for identity, idempotency, and database packages. The branch remains `IN_PROGRESS` because independent critique, remaining parent-plan requirements, full GAUNTLET, candidate freeze, and exact GitLab promotion are still pending.
