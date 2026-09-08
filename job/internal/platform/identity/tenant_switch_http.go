@@ -1,18 +1,17 @@
 package identity
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/httpx"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 )
 
 const (
@@ -204,5 +203,3 @@ func writeTenantSwitchProblem(w http.ResponseWriter, status int, code string, co
 	httpx.WriteProblem(w, problem)
 }
 
-var _ = bytes.Equal
-var _ = utf8.ValidString
