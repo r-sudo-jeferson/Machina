@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	ErrMissingSessionToken = errors.New("missing session token")
-	ErrMissingCSRFToken    = errors.New("missing CSRF token")
-	ErrSessionTokenReuse   = errors.New("session rotation requires a new session token")
+	ErrMissingSessionToken  = errors.New("missing session token")
+	ErrMissingCSRFToken     = errors.New("missing CSRF token")
+	ErrSessionTokenReuse    = errors.New("session rotation requires a new session token")
 	ErrInvalidTargetContext = errors.New("invalid target tenant or workspace")
 )
 
