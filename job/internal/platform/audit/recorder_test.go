@@ -51,6 +51,39 @@ func TestReconstructDecisionRecoversAllowedAndDeniedEvidence(t *testing.T) {
 	}
 }
 
+func TestReconstructDecisionAcceptsJSONBNormalizedMetadata(t *testing.T) {
+	cases := []struct {
+		name     string
+		decision string
+		metadata string
+		reasons  []string
+	}{
+		{name: "allowed whitespace", decision: "allow", metadata: `{"latency_ms": 25}`},
+		{name: "denied reordered", decision: "deny", metadata: `{"reason_codes": ["explicit_forbid", "stale_policy_version"], "latency_ms": 25}`, reasons: []string{"explicit_forbid", "stale_policy_version"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stored := StoredDecision{
+				TenantID:       auditTestUUID(0x11),
+				ActorSubjectID: auditTestUUID(0x22),
+				Action:         "tenant.read",
+				Decision:       tc.decision,
+				PolicyVersion:  7,
+				CorrelationID:  auditTestUUID(0x44),
+				SafeMetadata:   []byte(tc.metadata),
+			}
+			got, err := ReconstructDecision(stored)
+			if err != nil {
+				t.Fatalf("ReconstructDecision() error = %v", err)
+			}
+			if got.Latency != 25*time.Millisecond || !reflect.DeepEqual(got.ReasonCodes, tc.reasons) {
+				t.Fatalf("DecisionEvidence = %#v", got)
+			}
+		})
+	}
+}
+
 func TestParamsRejectsMetadataDecisionMismatch(t *testing.T) {
 	metadata, err := NewAuthorizationDecisionMetadata("allow", time.Millisecond, nil)
 	if err != nil {
@@ -79,6 +112,10 @@ func TestReconstructDecisionFailsClosed(t *testing.T) {
 	}{
 		{name: "unknown field", mutate: func(v StoredDecision) StoredDecision {
 			v.SafeMetadata = []byte(`{"latency_ms":25,"reason_codes":["explicit_forbid"],"raw_prompt":"forbidden"}`)
+			return v
+		}},
+		{name: "duplicate field", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"latency_ms":25,"latency_ms":26,"reason_codes":["explicit_forbid"]}`)
 			return v
 		}},
 		{name: "malformed json", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":`); return v }},
