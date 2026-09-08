@@ -18,12 +18,16 @@ type recordedExec struct {
 
 type recordingTx struct {
 	execs      []recordedExec
+	execErr    error
 	committed  bool
 	rolledBack bool
 }
 
 func (tx *recordingTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	tx.execs = append(tx.execs, recordedExec{sql: sql, args: args})
+	if tx.execErr != nil {
+		return pgconn.NewCommandTag(""), tx.execErr
+	}
 	return pgconn.NewCommandTag("SELECT 1"), nil
 }
 
@@ -85,5 +89,54 @@ func TestWithinTenantSetsTransactionLocalTenantBeforeCallbackAndCommits(t *testi
 	}
 	if tx.rolledBack {
 		t.Fatal("WithinTenant() rolled back successful transaction")
+	}
+}
+
+func TestWithinTenantRollsBackWhenCallbackFails(t *testing.T) {
+	t.Parallel()
+
+	const tenantID = "00000000-0000-0000-0000-0000000000a1"
+	callbackErr := errors.New("callback failed")
+	tx := &recordingTx{}
+	transactor := newTransactor(recordingBeginner{tx: tx})
+
+	err := transactor.WithinTenant(context.Background(), tenantID, func(context.Context, *sqlcgen.Queries) error {
+		return callbackErr
+	})
+	if !errors.Is(err, callbackErr) {
+		t.Fatalf("WithinTenant() error = %v, want callback error", err)
+	}
+	if tx.committed {
+		t.Fatal("WithinTenant() committed failed callback")
+	}
+	if !tx.rolledBack {
+		t.Fatal("WithinTenant() did not roll back failed callback")
+	}
+}
+
+func TestWithinTenantFailsClosedWhenTenantContextCannotBeEstablished(t *testing.T) {
+	t.Parallel()
+
+	const tenantID = "00000000-0000-0000-0000-0000000000a1"
+	contextErr := errors.New("tenant context failed")
+	tx := &recordingTx{execErr: contextErr}
+	transactor := newTransactor(recordingBeginner{tx: tx})
+	callbackCalled := false
+
+	err := transactor.WithinTenant(context.Background(), tenantID, func(context.Context, *sqlcgen.Queries) error {
+		callbackCalled = true
+		return nil
+	})
+	if !errors.Is(err, contextErr) {
+		t.Fatalf("WithinTenant() error = %v, want tenant context error", err)
+	}
+	if callbackCalled {
+		t.Fatal("WithinTenant() executed callback without tenant context")
+	}
+	if tx.committed {
+		t.Fatal("WithinTenant() committed without tenant context")
+	}
+	if !tx.rolledBack {
+		t.Fatal("WithinTenant() did not roll back tenant context failure")
 	}
 }
