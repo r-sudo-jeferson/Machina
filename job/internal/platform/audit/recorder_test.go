@@ -121,6 +121,15 @@ func TestReconstructDecisionFailsClosed(t *testing.T) {
 		{name: "malformed json", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":`); return v }},
 		{name: "allow with deny reasons", mutate: func(v StoredDecision) StoredDecision { v.Decision = "allow"; return v }},
 		{name: "deny without reasons", mutate: func(v StoredDecision) StoredDecision { v.SafeMetadata = []byte(`{"latency_ms":25}`); return v }},
+		{name: "JSONB normalized allow with null latency", mutate: func(v StoredDecision) StoredDecision {
+			v.Decision = "allow"
+			v.SafeMetadata = []byte(`{"latency_ms": null}`)
+			return v
+		}},
+		{name: "JSONB normalized deny with null latency", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"reason_codes": ["explicit_forbid"], "latency_ms": null}`)
+			return v
+		}},
 		{name: "invalid tenant", mutate: func(v StoredDecision) StoredDecision { v.TenantID = pgtype.UUID{}; return v }},
 		{name: "invalid actor", mutate: func(v StoredDecision) StoredDecision { v.ActorSubjectID = pgtype.UUID{}; return v }},
 		{name: "invalid correlation", mutate: func(v StoredDecision) StoredDecision { v.CorrelationID = pgtype.UUID{}; return v }},
