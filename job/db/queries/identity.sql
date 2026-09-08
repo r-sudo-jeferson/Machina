@@ -50,6 +50,25 @@ FROM iam.rotate_session(
   rotated_at
 );
 
+-- name: SwitchSessionContext :one
+SELECT
+  switched_session.session_id::uuid AS session_id,
+  switched_session.active_tenant_id::uuid AS active_tenant_id,
+  switched_session.active_workspace_id::uuid AS active_workspace_id,
+  switched_session.expires_at::timestamptz AS expires_at
+FROM iam.switch_session_context(
+  sqlc.arg(current_session_token_hash)::bytea,
+  sqlc.arg(replacement_session_token_hash)::bytea,
+  sqlc.arg(replacement_csrf_token_hash)::bytea,
+  sqlc.arg(target_tenant_id)::uuid,
+  sqlc.arg(target_workspace_id)::uuid
+) AS switched_session(
+  session_id,
+  active_tenant_id,
+  active_workspace_id,
+  expires_at
+);
+
 -- name: GetSessionIdentity :one
 SELECT
   session_identity.id::uuid AS id,
