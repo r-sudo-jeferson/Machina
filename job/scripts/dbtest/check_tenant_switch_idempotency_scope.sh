@@ -198,12 +198,12 @@ query_as postgres "UPDATE iam.tenants SET status='active',updated_at=clock_times
 # row. The winner commits one rotation; the waiter rechecks the now-revoked
 # token after its lock wait and is denied instead of rotating a second time.
 readonly CONCURRENT_SWITCH_SESSION_ID='3c000000-0000-0000-0000-000000000001'
-readonly CONCURRENT_SWITCH_OLD_HASH="$(printf 'c1%.0s' {1..32})"
-readonly CONCURRENT_SWITCH_OLD_CSRF="$(printf 'c2%.0s' {1..32})"
-readonly CONCURRENT_SWITCH_NEW_HASH="$(printf 'c3%.0s' {1..32})"
-readonly CONCURRENT_SWITCH_NEW_CSRF="$(printf 'c4%.0s' {1..32})"
-readonly CONCURRENT_SWITCH_ROTATED_HASH="$(printf 'c5%.0s' {1..32})"
-readonly CONCURRENT_SWITCH_ROTATED_CSRF="$(printf 'c6%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_OLD_HASH="$(printf 'ee%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_OLD_CSRF="$(printf 'ef%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_NEW_HASH="$(printf 'e0%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_NEW_CSRF="$(printf 'e9%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_ROTATED_HASH="$(printf 'ea%.0s' {1..32})"
+readonly CONCURRENT_SWITCH_ROTATED_CSRF="$(printf 'eb%.0s' {1..32})"
 readonly CONCURRENT_SWITCH_KEY='tenant-switch-concurrent-0001'
 readonly CONCURRENT_SWITCH_CORRELATION='4b000000-0000-0000-0000-000000000004'
 readonly CONCURRENT_SWITCH_REPLAY_CORRELATION='4b000000-0000-0000-0000-000000000005'
