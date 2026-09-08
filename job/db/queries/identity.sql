@@ -33,5 +33,29 @@ FROM iam.get_active_session(sqlc.arg(session_token_hash)::bytea) AS active_sessi
   rotated_at
 );
 
+-- name: GetSessionIdentity :one
+SELECT
+  session_identity.id::uuid AS id,
+  session_identity.display_name::text AS display_name
+FROM iam.get_session_identity(sqlc.arg(session_token_hash)::bytea) AS session_identity(
+  id,
+  display_name
+);
+
+-- name: ListSessionTenants :many
+SELECT
+  session_tenant.tenant_id::uuid AS tenant_id,
+  session_tenant.slug::text AS slug,
+  session_tenant.display_name::text AS display_name,
+  session_tenant.status::text AS status,
+  session_tenant.starter_role::text AS starter_role
+FROM iam.list_session_tenants(sqlc.arg(session_token_hash)::bytea) AS session_tenant(
+  tenant_id,
+  slug,
+  display_name,
+  status,
+  starter_role
+);
+
 -- name: RevokeSession :exec
 SELECT iam.revoke_session(sqlc.arg(session_token_hash)::bytea);
