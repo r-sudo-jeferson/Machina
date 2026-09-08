@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -102,7 +103,7 @@ func TestAuthenticatedContextServiceResolvesOnlyServerOwnedActiveContext(t *test
 	if tenants.calls != 1 || tenants.selection.Tenant.TenantID != tenantID || tenants.selection.WorkspaceID != workspaceID {
 		t.Fatalf("tenant loader received non-server selection: %#v", tenants.selection)
 	}
-	if got.Session != session || got.Selection.Tenant.TenantID != tenantID || got.Context.Tenant.ID != tenantID || got.Context.Workspace.ID != workspaceID {
+	if !reflect.DeepEqual(got.Session, session) || got.Selection.Tenant.TenantID != tenantID || got.Context.Tenant.ID != tenantID || got.Context.Workspace.ID != workspaceID {
 		t.Fatalf("resolved authenticated context = %#v", got)
 	}
 }
