@@ -87,6 +87,78 @@ func (q *Queries) GetActiveSession(ctx context.Context, sessionTokenHash []byte)
 	return i, err
 }
 
+const getSessionIdentity = `-- name: GetSessionIdentity :one
+SELECT
+  session_identity.id::uuid AS id,
+  session_identity.display_name::text AS display_name
+FROM iam.get_session_identity($1::bytea) AS session_identity(
+  id,
+  display_name
+)
+`
+
+type GetSessionIdentityRow struct {
+	ID          pgtype.UUID
+	DisplayName string
+}
+
+func (q *Queries) GetSessionIdentity(ctx context.Context, sessionTokenHash []byte) (GetSessionIdentityRow, error) {
+	row := q.db.QueryRow(ctx, getSessionIdentity, sessionTokenHash)
+	var i GetSessionIdentityRow
+	err := row.Scan(&i.ID, &i.DisplayName)
+	return i, err
+}
+
+const listSessionTenants = `-- name: ListSessionTenants :many
+SELECT
+  session_tenant.tenant_id::uuid AS tenant_id,
+  session_tenant.slug::text AS slug,
+  session_tenant.display_name::text AS display_name,
+  session_tenant.status::text AS status,
+  session_tenant.starter_role::text AS starter_role
+FROM iam.list_session_tenants($1::bytea) AS session_tenant(
+  tenant_id,
+  slug,
+  display_name,
+  status,
+  starter_role
+)
+`
+
+type ListSessionTenantsRow struct {
+	TenantID    pgtype.UUID
+	Slug        string
+	DisplayName string
+	Status      string
+	StarterRole string
+}
+
+func (q *Queries) ListSessionTenants(ctx context.Context, sessionTokenHash []byte) ([]ListSessionTenantsRow, error) {
+	rows, err := q.db.Query(ctx, listSessionTenants, sessionTokenHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionTenantsRow{}
+	for rows.Next() {
+		var i ListSessionTenantsRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.Slug,
+			&i.DisplayName,
+			&i.Status,
+			&i.StarterRole,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeSession = `-- name: RevokeSession :exec
 SELECT iam.revoke_session($1::bytea)
 `
