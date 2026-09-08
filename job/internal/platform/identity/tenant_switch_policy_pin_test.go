@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	platformauthz "github.com/r-sudo-jeferson/Machina/job/internal/platform/authz"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 )
 
