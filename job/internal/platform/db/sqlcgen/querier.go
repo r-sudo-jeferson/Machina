@@ -11,7 +11,9 @@ import (
 )
 
 type Querier interface {
+	ConsumeOIDCAuthorizationAttempt(ctx context.Context, stateHash []byte) (ConsumeOIDCAuthorizationAttemptRow, error)
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (IamMembership, error)
+	CreateOIDCAuthorizationAttempt(ctx context.Context, arg CreateOIDCAuthorizationAttemptParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (pgtype.UUID, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (IamTenant, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (IamWorkspace, error)
