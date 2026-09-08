@@ -202,7 +202,7 @@ func newRecordingTenantSwitchCoordinator(unit *recordingTenantSwitchUnit, runner
 			return runnerErr
 		}
 		return fn(ctx, unit)
-	})
+	}, allowTenantSwitchAuthorizer())
 	if err != nil {
 		panic(err)
 	}
@@ -586,7 +586,7 @@ func TestTenantSwitchCoordinatorTreatsCommitUncertaintyAsReauthenticationBoundar
 			return err
 		}
 		return db.ErrTransactionCommit
-	})
+	}, allowTenantSwitchAuthorizer())
 	if coordinatorErr != nil {
 		t.Fatalf("newTenantSwitchCoordinator() error = %v", coordinatorErr)
 	}

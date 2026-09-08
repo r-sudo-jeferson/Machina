@@ -95,28 +95,29 @@ type tenantSwitchUnit interface {
 type tenantSwitchTransactionRunner func(context.Context, func(context.Context, tenantSwitchUnit) error) error
 
 type TenantSwitchCoordinator struct {
-	run tenantSwitchTransactionRunner
+	run        tenantSwitchTransactionRunner
+	authorizer tenantSwitchAuthorizer
 }
 
 // NewTenantSwitchCoordinator binds the coordinator to the fail-closed
 // unscoped transaction boundary. No tenant-scoped query is available until
 // the database binder has authorized the requested target.
-func NewTenantSwitchCoordinator(scope *platformdb.Transactor) (*TenantSwitchCoordinator, error) {
-	if scope == nil {
+func NewTenantSwitchCoordinator(scope *platformdb.Transactor, authorizer tenantSwitchAuthorizer) (*TenantSwitchCoordinator, error) {
+	if scope == nil || isNilTenantSwitchAuthorizer(authorizer) {
 		return nil, ErrInvalidTenantSwitchCoordinatorConfig
 	}
 	return newTenantSwitchCoordinator(func(ctx context.Context, fn func(context.Context, tenantSwitchUnit) error) error {
 		return scope.WithinUnscoped(ctx, func(txCtx context.Context, queries *sqlcgen.Queries) error {
 			return fn(txCtx, sqlTenantSwitchUnit{queries: queries})
 		})
-	})
+	}, authorizer)
 }
 
-func newTenantSwitchCoordinator(run tenantSwitchTransactionRunner) (*TenantSwitchCoordinator, error) {
-	if run == nil {
+func newTenantSwitchCoordinator(run tenantSwitchTransactionRunner, authorizer tenantSwitchAuthorizer) (*TenantSwitchCoordinator, error) {
+	if run == nil || isNilTenantSwitchAuthorizer(authorizer) {
 		return nil, ErrInvalidTenantSwitchCoordinatorConfig
 	}
-	return &TenantSwitchCoordinator{run: run}, nil
+	return &TenantSwitchCoordinator{run: run, authorizer: authorizer}, nil
 }
 
 // Switch performs binding, idempotency claim, session mutation, projection,
@@ -124,7 +125,7 @@ func newTenantSwitchCoordinator(run tenantSwitchTransactionRunner) (*TenantSwitc
 // Replacement secrets are copied into the returned result only after the
 // runner reports a successful commit.
 func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwitchRequest) (TenantSwitchResult, error) {
-	if c == nil || c.run == nil {
+	if c == nil || c.run == nil || isNilTenantSwitchAuthorizer(c.authorizer) {
 		return TenantSwitchResult{}, ErrInvalidTenantSwitchCoordinatorConfig
 	}
 	if ctx == nil {
@@ -157,8 +158,14 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 
 		switch bind.MappingState {
 		case "claimed":
+			if err := c.authorizeTenantSwitch(txCtx, unit, request, presentedHash[:], bind); err != nil {
+				return err
+			}
 			return c.claimAndSwitch(txCtx, unit, request, requestHash, bind, &pending)
 		case "replay":
+			if err := c.authorizeTenantSwitch(txCtx, unit, request, presentedHash[:], bind); err != nil {
+				return err
+			}
 			return c.replay(txCtx, unit, request, requestHash, bind, &pending)
 		case "conflict":
 			return ErrTenantSwitchScopeConflict
