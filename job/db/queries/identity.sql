@@ -23,7 +23,15 @@ SELECT
   active_session.active_workspace_id,
   active_session.expires_at,
   active_session.rotated_at
-FROM iam.get_active_session(sqlc.arg(session_token_hash)::bytea) AS active_session;
+FROM iam.get_active_session(sqlc.arg(session_token_hash)::bytea) AS active_session(
+  id,
+  subject_id,
+  csrf_token_hash,
+  active_tenant_id,
+  active_workspace_id,
+  expires_at,
+  rotated_at
+);
 
 -- name: RevokeSession :exec
 SELECT iam.revoke_session(sqlc.arg(session_token_hash)::bytea);
