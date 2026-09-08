@@ -29,7 +29,10 @@ struct LatencySummary {
 }
 
 fn summarize(samples: &mut [Duration]) -> LatencySummary {
-    assert!(!samples.is_empty(), "performance sample set must not be empty");
+    assert!(
+        !samples.is_empty(),
+        "performance sample set must not be empty"
+    );
     samples.sort_unstable();
     LatencySummary {
         p50: percentile(samples, 50),
