@@ -13,7 +13,7 @@ var (
 	ErrMissingSessionToken  = errors.New("missing session token")
 	ErrMissingCSRFToken     = errors.New("missing CSRF token")
 	ErrSessionTokenReuse    = errors.New("session rotation requires a new session token")
-	ErrInvalidTargetContext = errors.New("invalid target tenant or workspace")
+	ErrInvalidTargetContext = errors.New("invalid target tenant")
 )
 
 type sessionQueries interface {
@@ -115,7 +115,6 @@ func (s *SessionStore) SwitchContext(
 	replacementSessionToken string,
 	replacementCSRFToken string,
 	targetTenantID pgtype.UUID,
-	targetWorkspaceID pgtype.UUID,
 ) (sqlcgen.SwitchSessionContextRow, error) {
 	if presentedSessionToken == "" || replacementSessionToken == "" {
 		return sqlcgen.SwitchSessionContextRow{}, ErrMissingSessionToken
@@ -129,7 +128,7 @@ func (s *SessionStore) SwitchContext(
 	if replacementSessionToken == replacementCSRFToken {
 		return sqlcgen.SwitchSessionContextRow{}, ErrSessionSecretCollision
 	}
-	if !targetTenantID.Valid || !targetWorkspaceID.Valid {
+	if !targetTenantID.Valid {
 		return sqlcgen.SwitchSessionContextRow{}, ErrInvalidTargetContext
 	}
 
@@ -141,6 +140,5 @@ func (s *SessionStore) SwitchContext(
 		ReplacementSessionTokenHash: replacementHash[:],
 		ReplacementCsrfTokenHash:    replacementCSRFHash[:],
 		TargetTenantID:              targetTenantID,
-		TargetWorkspaceID:           targetWorkspaceID,
 	})
 }
