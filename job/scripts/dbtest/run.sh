@@ -26,6 +26,7 @@ readonly MIGRATIONS=(
   db/migrations/0010_oidc_authorization_attempts.sql
   db/migrations/0011_session_rotation.sql
   db/migrations/0012_session_context_switch.sql
+  db/migrations/0013_idempotency_boundary.sql
 )
 
 fail() {
