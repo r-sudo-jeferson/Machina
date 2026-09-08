@@ -275,8 +275,7 @@ FROM iam.switch_session_context(
   $1::bytea,
   $2::bytea,
   $3::bytea,
-  $4::uuid,
-  $5::uuid
+  $4::uuid
 ) AS switched_session(
   session_id,
   active_tenant_id,
@@ -290,7 +289,6 @@ type SwitchSessionContextParams struct {
 	ReplacementSessionTokenHash []byte
 	ReplacementCsrfTokenHash    []byte
 	TargetTenantID              pgtype.UUID
-	TargetWorkspaceID           pgtype.UUID
 }
 
 type SwitchSessionContextRow struct {
@@ -306,7 +304,6 @@ func (q *Queries) SwitchSessionContext(ctx context.Context, arg SwitchSessionCon
 		arg.ReplacementSessionTokenHash,
 		arg.ReplacementCsrfTokenHash,
 		arg.TargetTenantID,
-		arg.TargetWorkspaceID,
 	)
 	var i SwitchSessionContextRow
 	err := row.Scan(
