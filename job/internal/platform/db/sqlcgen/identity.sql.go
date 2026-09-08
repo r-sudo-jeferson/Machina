@@ -11,6 +11,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const consumeOIDCAuthorizationAttempt = `-- name: ConsumeOIDCAuthorizationAttempt :one
+SELECT
+  attempt.nonce_hash::bytea AS nonce_hash,
+  attempt.pkce_verifier::text AS pkce_verifier,
+  attempt.redirect_uri::text AS redirect_uri
+FROM iam.consume_oidc_authorization_attempt($1::bytea) AS attempt(
+  nonce_hash,
+  pkce_verifier,
+  redirect_uri
+)
+`
+
+type ConsumeOIDCAuthorizationAttemptRow struct {
+	NonceHash    []byte
+	PkceVerifier string
+	RedirectUri  string
+}
+
+func (q *Queries) ConsumeOIDCAuthorizationAttempt(ctx context.Context, stateHash []byte) (ConsumeOIDCAuthorizationAttemptRow, error) {
+	row := q.db.QueryRow(ctx, consumeOIDCAuthorizationAttempt, stateHash)
+	var i ConsumeOIDCAuthorizationAttemptRow
+	err := row.Scan(&i.NonceHash, &i.PkceVerifier, &i.RedirectUri)
+	return i, err
+}
+
+const createOIDCAuthorizationAttempt = `-- name: CreateOIDCAuthorizationAttempt :exec
+SELECT iam.create_oidc_authorization_attempt(
+  $1::bytea,
+  $2::bytea,
+  $3::text,
+  $4::text,
+  $5::timestamptz
+)
+`
+
+type CreateOIDCAuthorizationAttemptParams struct {
+	StateHash    []byte
+	NonceHash    []byte
+	PkceVerifier string
+	RedirectUri  string
+	ExpiresAt    pgtype.Timestamptz
+}
+
+func (q *Queries) CreateOIDCAuthorizationAttempt(ctx context.Context, arg CreateOIDCAuthorizationAttemptParams) error {
+	_, err := q.db.Exec(ctx, createOIDCAuthorizationAttempt,
+		arg.StateHash,
+		arg.NonceHash,
+		arg.PkceVerifier,
+		arg.RedirectUri,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const createSession = `-- name: CreateSession :one
 SELECT iam.create_session(
   $1::uuid,
@@ -184,7 +238,7 @@ type UpsertSubjectParams struct {
 
 func (q *Queries) UpsertSubject(ctx context.Context, arg UpsertSubjectParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertSubject, arg.SubjectID, arg.ExternalSubject, arg.DisplayName)
-	var subject_id pgtype.UUID
-	err := row.Scan(&subject_id)
-	return subject_id, err
+	var session_id pgtype.UUID
+	err := row.Scan(&session_id)
+	return session_id, err
 }
