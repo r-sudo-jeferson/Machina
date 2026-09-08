@@ -20,6 +20,10 @@ type recordingSessionQueries struct {
 	lookupErr    error
 	revokeHash   []byte
 	revokeCalls  int
+	rotateParams sqlcgen.RotateSessionParams
+	rotateCalls  int
+	rotateRow    sqlcgen.RotateSessionRow
+	rotateErr    error
 	upsertParams sqlcgen.UpsertSubjectParams
 	upsertCalls  int
 }
@@ -40,6 +44,16 @@ func (q *recordingSessionQueries) RevokeSession(_ context.Context, sessionTokenH
 	q.revokeCalls++
 	q.revokeHash = append([]byte(nil), sessionTokenHash...)
 	return nil
+}
+
+func (q *recordingSessionQueries) RotateSession(_ context.Context, arg sqlcgen.RotateSessionParams) (sqlcgen.RotateSessionRow, error) {
+	q.rotateCalls++
+	q.rotateParams = sqlcgen.RotateSessionParams{
+		SessionTokenHash:    append([]byte(nil), arg.SessionTokenHash...),
+		NewSessionTokenHash: append([]byte(nil), arg.NewSessionTokenHash...),
+		NewCsrfTokenHash:    append([]byte(nil), arg.NewCsrfTokenHash...),
+	}
+	return q.rotateRow, q.rotateErr
 }
 
 func (q *recordingSessionQueries) UpsertSubject(_ context.Context, arg sqlcgen.UpsertSubjectParams) (pgtype.UUID, error) {
@@ -110,6 +124,86 @@ func TestSessionStoreRevokeHashesPresentedSessionToken(t *testing.T) {
 	wantHash := HashToken("presented-session-token")
 	if string(queries.revokeHash) != string(wantHash[:]) {
 		t.Fatal("Revoke() sent a value other than the session-token hash to the database boundary")
+	}
+}
+
+func TestSessionStoreRotateHashesPresentedAndReplacementSecrets(t *testing.T) {
+	t.Parallel()
+
+	want := sqlcgen.RotateSessionRow{
+		ID:        pgtype.UUID{Bytes: [16]byte{4}, Valid: true},
+		SubjectID: pgtype.UUID{Bytes: [16]byte{5}, Valid: true},
+		ExpiresAt: pgtype.Timestamptz{Time: time.Date(2026, 9, 9, 1, 0, 0, 0, time.UTC), Valid: true},
+		RotatedAt: pgtype.Timestamptz{Time: time.Date(2026, 9, 8, 4, 0, 0, 0, time.UTC), Valid: true},
+	}
+	queries := &recordingSessionQueries{rotateRow: want}
+	store := NewSessionStore(queries)
+
+	got, err := store.Rotate(context.Background(), "presented-old-session", "presented-new-session", "presented-new-csrf")
+	if err != nil {
+		t.Fatalf("Rotate() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Rotate() = %#v, want %#v", got, want)
+	}
+	if queries.rotateCalls != 1 {
+		t.Fatalf("RotateSession() calls = %d, want 1", queries.rotateCalls)
+	}
+
+	wantOldHash := HashToken("presented-old-session")
+	wantNewHash := HashToken("presented-new-session")
+	wantCSRFHash := HashToken("presented-new-csrf")
+	if string(queries.rotateParams.SessionTokenHash) != string(wantOldHash[:]) {
+		t.Fatal("Rotate() did not hash the presented old session token")
+	}
+	if string(queries.rotateParams.NewSessionTokenHash) != string(wantNewHash[:]) {
+		t.Fatal("Rotate() did not hash the replacement session token")
+	}
+	if string(queries.rotateParams.NewCsrfTokenHash) != string(wantCSRFHash[:]) {
+		t.Fatal("Rotate() did not hash the replacement CSRF token")
+	}
+}
+
+func TestSessionStoreRotateRejectsMissingReusedOrCollidingSecretsBeforeDatabase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		old     string
+		new     string
+		newCSRF string
+	}{
+		{name: "missing old session", old: "", new: "new-session", newCSRF: "new-csrf"},
+		{name: "missing new session", old: "old-session", new: "", newCSRF: "new-csrf"},
+		{name: "missing new csrf", old: "old-session", new: "new-session", newCSRF: ""},
+		{name: "reused session", old: "same-session", new: "same-session", newCSRF: "new-csrf"},
+		{name: "session csrf collision", old: "old-session", new: "same-secret", newCSRF: "same-secret"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			queries := &recordingSessionQueries{}
+			store := NewSessionStore(queries)
+			if _, err := store.Rotate(context.Background(), tt.old, tt.new, tt.newCSRF); err == nil {
+				t.Fatal("Rotate() accepted invalid replacement material")
+			}
+			if queries.rotateCalls != 0 {
+				t.Fatal("invalid rotation material reached the database boundary")
+			}
+		})
+	}
+}
+
+func TestSessionStoreRotatePreservesDatabaseError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("rotation unavailable")
+	queries := &recordingSessionQueries{rotateErr: wantErr}
+	store := NewSessionStore(queries)
+	if _, err := store.Rotate(context.Background(), "old-session", "new-session", "new-csrf"); !errors.Is(err, wantErr) {
+		t.Fatalf("Rotate() error = %v, want errors.Is(_, %v)", err, wantErr)
 	}
 }
 
