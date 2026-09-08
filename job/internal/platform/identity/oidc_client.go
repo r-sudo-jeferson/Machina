@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrInvalidOIDCClientConfig        = errors.New("invalid OIDC client configuration")
+	ErrInvalidOIDCClientConfig       = errors.New("invalid OIDC client configuration")
 	ErrMissingOIDCAuthorizationInput = errors.New("missing OIDC authorization input")
 	ErrOIDCClientNotConfigured       = errors.New("OIDC client is not configured")
 )
