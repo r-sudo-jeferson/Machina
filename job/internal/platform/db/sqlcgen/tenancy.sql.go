@@ -95,6 +95,27 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 	return i, err
 }
 
+const getActivePolicySnapshot = `-- name: GetActivePolicySnapshot :one
+SELECT version, snapshot_hash
+FROM authz.policy_snapshots
+WHERE tenant_id = $1
+  AND status = 'active'
+ORDER BY version DESC
+LIMIT 1
+`
+
+type GetActivePolicySnapshotRow struct {
+	Version      int64
+	SnapshotHash string
+}
+
+func (q *Queries) GetActivePolicySnapshot(ctx context.Context, tenantID pgtype.UUID) (GetActivePolicySnapshotRow, error) {
+	row := q.db.QueryRow(ctx, getActivePolicySnapshot, tenantID)
+	var i GetActivePolicySnapshotRow
+	err := row.Scan(&i.Version, &i.SnapshotHash)
+	return i, err
+}
+
 const getMembership = `-- name: GetMembership :one
 SELECT tenant_id, subject_id, starter_role, status, created_at, updated_at
 FROM iam.memberships
@@ -270,26 +291,5 @@ func (q *Queries) UpsertPreference(ctx context.Context, arg UpsertPreferencePara
 		&i.Preferences,
 		&i.UpdatedAt,
 	)
-	return i, err
-}
-
-const getActivePolicySnapshot = `-- name: GetActivePolicySnapshot :one
-SELECT version, snapshot_hash
-FROM authz.policy_snapshots
-WHERE tenant_id = $1
-  AND status = 'active'
-ORDER BY version DESC
-LIMIT 1
-`
-
-type GetActivePolicySnapshotRow struct {
-	Version      int64
-	SnapshotHash string
-}
-
-func (q *Queries) GetActivePolicySnapshot(ctx context.Context, tenantID pgtype.UUID) (GetActivePolicySnapshotRow, error) {
-	row := q.db.QueryRow(ctx, getActivePolicySnapshot, tenantID)
-	var i GetActivePolicySnapshotRow
-	err := row.Scan(&i.Version, &i.SnapshotHash)
 	return i, err
 }
