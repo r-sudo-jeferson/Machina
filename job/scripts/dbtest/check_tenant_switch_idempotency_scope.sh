@@ -319,7 +319,27 @@ expect_equals '2' "$(query_as postgres "SELECT generation FROM iam.sessions WHER
 
 # The current replacement cookie replays the immutable outcome without a
 # second rotation, while a later generation makes the old key stale.
-concurrent_replay="$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT * FROM iam.bind_tenant_switch_idempotency(decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),'${CONCURRENT_SWITCH_KEY}','${CONCURRENT_SWITCH_BODY_HASH}','${TENANT_B}') \\gset bind_ SELECT claim_state || ':' || correlation_id FROM ops.claim_idempotency_key('${CONCURRENT_SWITCH_KEY}','${SCOPE_OPERATION}',:'bind_receipt_hash','${CONCURRENT_SWITCH_REPLAY_CORRELATION}',:'bind_receipt_expires_at'::timestamptz); COMMIT;" | tail -n 1)"
+concurrent_replay_log="$(mktemp "${RUNNER_TEMP:-/tmp}/machina-scope-concurrent-replay.XXXXXX")"
+docker exec -i "$CONTAINER" psql -XAtq -v ON_ERROR_STOP=1 -U "$RUNTIME_ROLE" -d "$DB_NAME" >"$concurrent_replay_log" 2>&1 <<SQL
+BEGIN;
+SELECT * FROM iam.bind_tenant_switch_idempotency(
+  decode('${CONCURRENT_SWITCH_NEW_HASH}','hex'),
+  '${CONCURRENT_SWITCH_KEY}',
+  '${CONCURRENT_SWITCH_BODY_HASH}',
+  '${TENANT_B}'
+) \gset bind_
+SELECT claim_state || ':' || correlation_id
+FROM ops.claim_idempotency_key(
+  '${CONCURRENT_SWITCH_KEY}',
+  '${SCOPE_OPERATION}',
+  :'bind_receipt_hash',
+  '${CONCURRENT_SWITCH_REPLAY_CORRELATION}',
+  :'bind_receipt_expires_at'::timestamptz
+);
+COMMIT;
+SQL
+concurrent_replay="$(tail -n 1 "$concurrent_replay_log")"
+rm -f "$concurrent_replay_log"
 expect_equals "replay:${CONCURRENT_SWITCH_CORRELATION}" "$concurrent_replay" 'current-cookie retry did not replay the original correlation'
 expect_equals '2' "$(query_as postgres "SELECT generation FROM iam.sessions WHERE id='${CONCURRENT_SWITCH_SESSION_ID}'")" 'current-cookie retry rotated the session a second time'
 
