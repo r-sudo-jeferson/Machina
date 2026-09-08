@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use machina_authz::proto::DecisionRequest;
 use machina_authz::proto::authorization_service_client::AuthorizationServiceClient;
+use tonic::Code;
 use tonic::transport::Channel;
 
 const GRPC_ENV: &str = "MACHINA_AUTHZ_GRPC_ADDR";
@@ -116,6 +117,23 @@ async fn connect_client(addr: SocketAddr) -> AuthorizationServiceClient<Channel>
     panic!("authorization gRPC listener did not become reachable");
 }
 
+fn decision_request(tenant_id: &str, correlation_id: &str) -> DecisionRequest {
+    DecisionRequest {
+        subject_id: "subject-a".to_owned(),
+        tenant_id: tenant_id.to_owned(),
+        workspace_id: "workspace-a".to_owned(),
+        action: "context.read".to_owned(),
+        resource_type: "PlatformContext".to_owned(),
+        resource_id: "active".to_owned(),
+        required_policy_version: 1,
+        correlation_id: correlation_id.to_owned(),
+        context: HashMap::from([
+            ("starter_role".to_owned(), "owner".to_owned()),
+            ("membership_status".to_owned(), "active".to_owned()),
+        ]),
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires the pinned PostgreSQL policy-source harness"]
 async fn executable_loads_active_tenant_policy_from_postgres_before_becoming_ready() {
@@ -127,21 +145,16 @@ async fn executable_loads_active_tenant_policy_from_postgres_before_becoming_rea
     await_http_status(probe_addr, "/readyz", 200).await;
 
     let mut client = connect_client(grpc_addr).await;
+
+    let malformed = client
+        .decide(decision_request("not-a-uuid", "corr-postgres-invalid"))
+        .await
+        .expect_err("malformed tenant identity must be rejected at the gRPC boundary");
+    assert_eq!(malformed.code(), Code::InvalidArgument);
+    await_http_status(probe_addr, "/readyz", 200).await;
+
     let response = client
-        .decide(DecisionRequest {
-            subject_id: "subject-a".to_owned(),
-            tenant_id: TENANT_ID.to_owned(),
-            workspace_id: "workspace-a".to_owned(),
-            action: "context.read".to_owned(),
-            resource_type: "PlatformContext".to_owned(),
-            resource_id: "active".to_owned(),
-            required_policy_version: 1,
-            correlation_id: "corr-postgres-a".to_owned(),
-            context: HashMap::from([
-                ("starter_role".to_owned(), "owner".to_owned()),
-                ("membership_status".to_owned(), "active".to_owned()),
-            ]),
-        })
+        .decide(decision_request(TENANT_ID, "corr-postgres-a"))
         .await
         .expect("PostgreSQL-backed authorization response")
         .into_inner();
