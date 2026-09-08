@@ -37,7 +37,8 @@ CREATE FUNCTION iam.switch_session_context(
 RETURNS TABLE (
     session_id uuid,
     active_tenant_id uuid,
-    active_workspace_id uuid
+    active_workspace_id uuid,
+    expires_at timestamptz
 )
 LANGUAGE plpgsql
 VOLATILE
@@ -48,6 +49,7 @@ AS $$
 DECLARE
     selected_session_id uuid;
     selected_subject_id uuid;
+    selected_expires_at timestamptz;
     current_csrf_token_hash bytea;
     previous_switch_capability text;
 BEGIN
@@ -68,8 +70,8 @@ BEGIN
         RAISE EXCEPTION 'replacement session secrets must be independent' USING ERRCODE = '22023';
     END IF;
 
-    SELECT session.id, session.subject_id, session.csrf_token_hash
-    INTO selected_session_id, selected_subject_id, current_csrf_token_hash
+    SELECT session.id, session.subject_id, session.expires_at, session.csrf_token_hash
+    INTO selected_session_id, selected_subject_id, selected_expires_at, current_csrf_token_hash
     FROM iam.sessions AS session
     WHERE session.session_token_hash = p_current_session_token_hash
       AND session.revoked_at IS NULL
@@ -124,7 +126,7 @@ BEGIN
     );
 
     RETURN QUERY
-    SELECT selected_session_id, p_target_tenant_id, p_target_workspace_id;
+    SELECT selected_session_id, p_target_tenant_id, p_target_workspace_id, selected_expires_at;
 END;
 $$;
 
@@ -134,6 +136,6 @@ GRANT EXECUTE ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid, 
 COMMENT ON POLICY session_context_switch_migrator_read ON iam.memberships IS 'Allows only the migration-role security definer to verify a requested tenant membership while the transaction-local session-context-switch capability is active.';
 COMMENT ON POLICY session_context_switch_migrator_read ON iam.tenants IS 'Allows only the migration-role security definer to verify requested tenant availability while the transaction-local session-context-switch capability is active.';
 COMMENT ON POLICY session_context_switch_migrator_read ON iam.workspaces IS 'Allows only the migration-role security definer to verify that the requested workspace belongs to the validated target tenant while the transaction-local session-context-switch capability is active.';
-COMMENT ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid, uuid) IS 'Atomically validates an active session, active membership, active tenant, and tenant-owned workspace before rotating session secrets and setting the server-owned active context.';
+COMMENT ON FUNCTION iam.switch_session_context(bytea, bytea, bytea, uuid, uuid) IS 'Atomically validates an active session, active membership, active tenant, and tenant-owned workspace before rotating session secrets and setting the server-owned active context while preserving and returning the absolute session expiry.';
 
 COMMIT;
