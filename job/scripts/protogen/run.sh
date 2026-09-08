@@ -20,6 +20,22 @@ protoc_gen_go_version="v1.36.12"
 protoc_gen_go_grpc_version="v1.6.2"
 module_path="github.com/r-sudo-jeferson/Machina/job"
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+base64_single_line() {
+  if base64 --help 2>&1 | grep -q -- '-w'; then
+    base64 -w0 "$1"
+  else
+    base64 "$1" | tr -d '\n'
+  fi
+}
+
 os="$(uname -s)"
 arch="$(uname -m)"
 case "$os/$arch" in
@@ -50,13 +66,7 @@ protoc_url="https://github.com/protocolbuffers/protobuf/releases/download/v${pro
 curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
   --output "$archive" "$protoc_url"
 
-actual_sha256="$(
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$archive" | awk '{print $1}'
-  else
-    shasum -a 256 "$archive" | awk '{print $1}'
-  fi
-)"
+actual_sha256="$(sha256_file "$archive")"
 if [[ "$actual_sha256" != "$protoc_sha256" ]]; then
   printf 'protoc archive checksum mismatch: got %s want %s\n' "$actual_sha256" "$protoc_sha256" >&2
   exit 70
@@ -86,9 +96,10 @@ if [[ "$mode" == "--check" ]]; then
     printf 'generated protobuf files are not versioned:\n%s\n' "$untracked" >&2
     while IFS= read -r file; do
       [[ -n "$file" ]] || continue
-      printf '\n===== BEGIN %s =====\n' "$file"
-      cat "$repo_root/$file"
-      printf '===== END %s =====\n' "$file"
+      absolute="$repo_root/$file"
+      printf 'GENERATED_FILE path=%s sha256=%s base64=' "$file" "$(sha256_file "$absolute")"
+      base64_single_line "$absolute"
+      printf '\n'
     done <<<"$untracked"
     exit 1
   fi
