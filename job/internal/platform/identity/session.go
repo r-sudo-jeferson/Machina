@@ -67,3 +67,29 @@ func CSRFCookie(value string, expires time.Time) *http.Cookie {
 		SameSite: http.SameSiteStrictMode,
 	}
 }
+
+func ClearSessionCookie() *http.Cookie {
+	return &http.Cookie{
+		Name:     SessionCookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(1, 0).UTC(),
+		MaxAge:   -1,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func ClearCSRFCookie() *http.Cookie {
+	return &http.Cookie{
+		Name:     CSRFCookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(1, 0).UTC(),
+		MaxAge:   -1,
+		Secure:   true,
+		HttpOnly: false,
+		SameSite: http.SameSiteStrictMode,
+	}
+}
