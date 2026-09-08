@@ -247,6 +247,10 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	}
 	targetTenantText := uuidText(request.TargetTenantID)
 	targetWorkspaceText := uuidText(switched.ActiveWorkspaceID)
+	actorID, ok := parseUUIDText(response.Identity.ID)
+	if !ok {
+		return ErrInvalidTenantSwitchOutcome
+	}
 	metadata := map[string]any{
 		"target_tenant_id":    targetTenantText,
 		"target_workspace_id": targetWorkspaceText,
@@ -259,7 +263,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	if err := recorder.Record(ctx, audit.Event{
 		TenantID:       request.TargetTenantID,
 		ID:             auditID,
-		ActorSubjectID: response.Identity.ID,
+		ActorSubjectID: actorID,
 		EventType:      "machina.tenant.switch.completed",
 		Action:         "tenant.switch",
 		Decision:       "allow",
@@ -282,7 +286,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		TenantID:      request.TargetTenantID,
 		WorkspaceID:   switched.ActiveWorkspaceID,
 		CorrelationID: request.CorrelationID,
-		ActorID:       response.Identity.ID,
+		ActorID:       actorID,
 		Payload:       metadata,
 	}); err != nil {
 		return err
@@ -300,7 +304,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	etagSet, err := unit.SetTenantSwitchResponseETag(ctx, sqlcgen.SetTenantSwitchResponseETagParams{
 		IdempotencyKey: request.IdempotencyKey,
 		RequestHash:    bind.ReceiptHash,
-		ResponseETag:   etag,
+		ResponseEtag:   etag,
 	})
 	if err != nil {
 		return fmt.Errorf("persist tenant-switch response etag: %w", err)
@@ -590,15 +594,18 @@ func unmarshalTenantSwitchResponse(body []byte) (tenantSwitchSessionContext, []b
 }
 
 func validateTenantSwitchResponse(response tenantSwitchSessionContext) error {
-	if !validTenantSwitchIdentity(response.Identity) ||
-		!validTenantSwitchAuthorizedContext(response.Active) ||
-		response.Active.Identity != response.Identity ||
-		response.ExpiresAt.IsZero() {
+	if err := validTenantSwitchIdentity(response.Identity); err != nil {
+		return err
+	}
+	if err := validTenantSwitchAuthorizedContext(response.Active); err != nil {
+		return err
+	}
+	if response.Active.Identity != response.Identity || response.ExpiresAt.IsZero() {
 		return ErrInvalidTenantSwitchOutcome
 	}
 	seen := make(map[string]struct{}, len(response.AvailableTenants))
 	for _, tenant := range response.AvailableTenants {
-		if err := validateTenantSwitchTenant(tenant); err != nil {
+		if err := validTenantSwitchTenant(tenant); err != nil {
 			return err
 		}
 		if _, exists := seen[tenant.ID]; exists {
