@@ -28,15 +28,15 @@ func (t *fakeTransport) Decide(ctx context.Context, request Request) (Response, 
 
 func validRequest() Request {
 	return Request{
-		SubjectID:            "01000000-0000-0000-0000-000000000000",
-		TenantID:             "02000000-0000-0000-0000-000000000000",
-		WorkspaceID:          "03000000-0000-0000-0000-000000000000",
-		Action:               "context.read",
-		ResourceType:         "Workspace",
-		ResourceID:           "03000000-0000-0000-0000-000000000000",
+		SubjectID:             "01000000-0000-0000-0000-000000000000",
+		TenantID:              "02000000-0000-0000-0000-000000000000",
+		WorkspaceID:           "03000000-0000-0000-0000-000000000000",
+		Action:                "context.read",
+		ResourceType:          "Workspace",
+		ResourceID:            "03000000-0000-0000-0000-000000000000",
 		RequiredPolicyVersion: 7,
-		CorrelationID:        "decision-correlation-1",
-		Context:              map[string]string{"starter_role": "owner"},
+		CorrelationID:         "decision-correlation-1",
+		Context:               map[string]string{"starter_role": "owner"},
 	}
 }
 
