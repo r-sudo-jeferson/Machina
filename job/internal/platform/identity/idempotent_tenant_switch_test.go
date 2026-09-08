@@ -41,6 +41,22 @@ func (u *recordingTenantSwitchUnit) BindTenantSwitchIdempotency(_ context.Contex
 	return u.bindRow, u.bindErr
 }
 
+func (u *recordingTenantSwitchUnit) CreateSession(_ context.Context, _ sqlcgen.CreateSessionParams) (pgtype.UUID, error) {
+	return pgtype.UUID{}, nil
+}
+
+func (u *recordingTenantSwitchUnit) GetActiveSession(_ context.Context, _ []byte) (sqlcgen.GetActiveSessionRow, error) {
+	return sqlcgen.GetActiveSessionRow{}, nil
+}
+
+func (u *recordingTenantSwitchUnit) RevokeSession(_ context.Context, _ []byte) error {
+	return nil
+}
+
+func (u *recordingTenantSwitchUnit) RotateSession(_ context.Context, _ sqlcgen.RotateSessionParams) (sqlcgen.RotateSessionRow, error) {
+	return sqlcgen.RotateSessionRow{}, nil
+}
+
 func (u *recordingTenantSwitchUnit) FinishTenantSwitchIdempotency(_ context.Context, arg sqlcgen.FinishTenantSwitchIdempotencyParams) (sqlcgen.FinishTenantSwitchIdempotencyRow, error) {
 	u.finishCalls++
 	u.finishParams = arg
@@ -171,6 +187,7 @@ func TestTenantSwitchCoordinatorReplayDoesNotGenerateOrRotate(t *testing.T) {
 
 	unit := claimedTenantSwitchUnit()
 	unit.bindRow.MappingState = "replay"
+	unit.bindRow.Generation++
 	unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
 		ClaimState:     "replay",
 		ResponseStatus: 200,
@@ -349,3 +366,5 @@ func containsSecret(body []byte, secret string) bool {
 	if secret == "" {
 		return false
 	}
+	return strings.Contains(string(body), secret)
+}
