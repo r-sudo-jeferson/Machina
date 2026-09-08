@@ -157,5 +157,6 @@ source scripts/dbtest/check_session_context_boundary.sh
 source scripts/dbtest/check_oidc_authorization_attempt_boundary.sh
 source scripts/dbtest/check_session_rotation_boundary.sh
 source scripts/dbtest/check_concurrent_sessions.sh
+source scripts/dbtest/check_session_context_switch.sh
 
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
