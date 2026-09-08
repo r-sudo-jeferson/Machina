@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -25,12 +26,12 @@ type authenticatedSessionStore interface {
 }
 
 type AuthenticatedSessionService struct {
-	subjects  authenticatedSubjectStore
-	sessions  authenticatedSessionStore
-	lifetime  time.Duration
-	now       func() time.Time
-	newUUID   func() (pgtype.UUID, error)
-	newToken  func() (string, error)
+	subjects authenticatedSubjectStore
+	sessions authenticatedSessionStore
+	lifetime time.Duration
+	now      func() time.Time
+	newUUID  func() (pgtype.UUID, error)
+	newToken func() (string, error)
 }
 
 type AuthenticatedSession struct {
