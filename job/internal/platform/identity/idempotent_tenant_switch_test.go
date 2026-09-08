@@ -69,7 +69,9 @@ func (u *recordingTenantSwitchUnit) SwitchSessionContext(_ context.Context, arg 
 }
 
 func tenantSwitchUUID(seed byte) pgtype.UUID {
-	return pgtype.UUID{Bytes: [16]byte{seed}, Valid: true}
+	var bytes [16]byte
+	bytes[15] = seed
+	return pgtype.UUID{Bytes: bytes, Valid: true}
 }
 
 func validTenantSwitchRequest() TenantSwitchRequest {
@@ -347,5 +349,3 @@ func containsSecret(body []byte, secret string) bool {
 	if secret == "" {
 		return false
 	}
-	return strings.Contains(string(body), secret)
-}
