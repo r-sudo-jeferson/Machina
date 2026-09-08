@@ -24,6 +24,10 @@ type recordingSessionQueries struct {
 	rotateCalls  int
 	rotateRow    sqlcgen.RotateSessionRow
 	rotateErr    error
+	switchParams sqlcgen.SwitchSessionContextParams
+	switchCalls  int
+	switchRow    sqlcgen.SwitchSessionContextRow
+	switchErr    error
 	upsertParams sqlcgen.UpsertSubjectParams
 	upsertCalls  int
 }
@@ -54,6 +58,18 @@ func (q *recordingSessionQueries) RotateSession(_ context.Context, arg sqlcgen.R
 		NewCsrfTokenHash:    append([]byte(nil), arg.NewCsrfTokenHash...),
 	}
 	return q.rotateRow, q.rotateErr
+}
+
+func (q *recordingSessionQueries) SwitchSessionContext(_ context.Context, arg sqlcgen.SwitchSessionContextParams) (sqlcgen.SwitchSessionContextRow, error) {
+	q.switchCalls++
+	q.switchParams = sqlcgen.SwitchSessionContextParams{
+		CurrentSessionTokenHash:     append([]byte(nil), arg.CurrentSessionTokenHash...),
+		ReplacementSessionTokenHash: append([]byte(nil), arg.ReplacementSessionTokenHash...),
+		ReplacementCsrfTokenHash:    append([]byte(nil), arg.ReplacementCsrfTokenHash...),
+		TargetTenantID:              arg.TargetTenantID,
+		TargetWorkspaceID:           arg.TargetWorkspaceID,
+	}
+	return q.switchRow, q.switchErr
 }
 
 func (q *recordingSessionQueries) UpsertSubject(_ context.Context, arg sqlcgen.UpsertSubjectParams) (pgtype.UUID, error) {
@@ -204,6 +220,111 @@ func TestSessionStoreRotatePreservesDatabaseError(t *testing.T) {
 	store := NewSessionStore(queries)
 	if _, err := store.Rotate(context.Background(), "old-session", "new-session", "new-csrf"); !errors.Is(err, wantErr) {
 		t.Fatalf("Rotate() error = %v, want errors.Is(_, %v)", err, wantErr)
+	}
+}
+
+func TestSessionStoreSwitchContextHashesSecretsAndPassesOnlyRequestedTarget(t *testing.T) {
+	t.Parallel()
+
+	tenantID := pgtype.UUID{Bytes: [16]byte{6}, Valid: true}
+	workspaceID := pgtype.UUID{Bytes: [16]byte{7}, Valid: true}
+	want := sqlcgen.SwitchSessionContextRow{
+		SessionID:         pgtype.UUID{Bytes: [16]byte{8}, Valid: true},
+		ActiveTenantID:    tenantID,
+		ActiveWorkspaceID: workspaceID,
+		ExpiresAt:         pgtype.Timestamptz{Time: time.Date(2026, 9, 9, 2, 0, 0, 0, time.UTC), Valid: true},
+	}
+	queries := &recordingSessionQueries{switchRow: want}
+	store := NewSessionStore(queries)
+
+	got, err := store.SwitchContext(
+		context.Background(),
+		"presented-old-session",
+		"presented-new-session",
+		"presented-new-csrf",
+		tenantID,
+		workspaceID,
+	)
+	if err != nil {
+		t.Fatalf("SwitchContext() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("SwitchContext() = %#v, want %#v", got, want)
+	}
+	if queries.switchCalls != 1 {
+		t.Fatalf("SwitchSessionContext() calls = %d, want 1", queries.switchCalls)
+	}
+
+	wantOldHash := HashToken("presented-old-session")
+	wantNewHash := HashToken("presented-new-session")
+	wantCSRFHash := HashToken("presented-new-csrf")
+	if string(queries.switchParams.CurrentSessionTokenHash) != string(wantOldHash[:]) {
+		t.Fatal("SwitchContext() did not hash the presented old session token")
+	}
+	if string(queries.switchParams.ReplacementSessionTokenHash) != string(wantNewHash[:]) {
+		t.Fatal("SwitchContext() did not hash the replacement session token")
+	}
+	if string(queries.switchParams.ReplacementCsrfTokenHash) != string(wantCSRFHash[:]) {
+		t.Fatal("SwitchContext() did not hash the replacement CSRF token")
+	}
+	if queries.switchParams.TargetTenantID != tenantID || queries.switchParams.TargetWorkspaceID != workspaceID {
+		t.Fatal("SwitchContext() changed the requested target before the server-side validation boundary")
+	}
+}
+
+func TestSessionStoreSwitchContextRejectsInvalidInputBeforeDatabase(t *testing.T) {
+	t.Parallel()
+
+	validTenant := pgtype.UUID{Bytes: [16]byte{9}, Valid: true}
+	validWorkspace := pgtype.UUID{Bytes: [16]byte{10}, Valid: true}
+	tests := []struct {
+		name      string
+		old       string
+		new       string
+		newCSRF   string
+		tenant    pgtype.UUID
+		workspace pgtype.UUID
+	}{
+		{name: "missing old session", old: "", new: "new-session", newCSRF: "new-csrf", tenant: validTenant, workspace: validWorkspace},
+		{name: "missing new session", old: "old-session", new: "", newCSRF: "new-csrf", tenant: validTenant, workspace: validWorkspace},
+		{name: "missing new csrf", old: "old-session", new: "new-session", newCSRF: "", tenant: validTenant, workspace: validWorkspace},
+		{name: "reused session", old: "same-session", new: "same-session", newCSRF: "new-csrf", tenant: validTenant, workspace: validWorkspace},
+		{name: "session csrf collision", old: "old-session", new: "same-secret", newCSRF: "same-secret", tenant: validTenant, workspace: validWorkspace},
+		{name: "invalid tenant", old: "old-session", new: "new-session", newCSRF: "new-csrf", workspace: validWorkspace},
+		{name: "invalid workspace", old: "old-session", new: "new-session", newCSRF: "new-csrf", tenant: validTenant},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			queries := &recordingSessionQueries{}
+			store := NewSessionStore(queries)
+			if _, err := store.SwitchContext(context.Background(), tt.old, tt.new, tt.newCSRF, tt.tenant, tt.workspace); err == nil {
+				t.Fatal("SwitchContext() accepted invalid input")
+			}
+			if queries.switchCalls != 0 {
+				t.Fatal("invalid context switch input reached the database boundary")
+			}
+		})
+	}
+}
+
+func TestSessionStoreSwitchContextPreservesDatabaseError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("context switch unavailable")
+	queries := &recordingSessionQueries{switchErr: wantErr}
+	store := NewSessionStore(queries)
+	if _, err := store.SwitchContext(
+		context.Background(),
+		"old-session",
+		"new-session",
+		"new-csrf",
+		pgtype.UUID{Bytes: [16]byte{11}, Valid: true},
+		pgtype.UUID{Bytes: [16]byte{12}, Valid: true},
+	); !errors.Is(err, wantErr) {
+		t.Fatalf("SwitchContext() error = %v, want errors.Is(_, %v)", err, wantErr)
 	}
 }
 
