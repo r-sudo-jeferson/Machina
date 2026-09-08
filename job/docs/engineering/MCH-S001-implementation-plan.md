@@ -169,8 +169,15 @@
 
 **Produces:** atomic domain/audit/outbox transaction, correlation IDs, traces/metrics/logs, hash-chained audit checkpoints.
 
-- [ ] Write crash-injection tests between mutation, audit insert and outbox publication.
-- [ ] Prove retries do not duplicate effects.
+- [x] Write crash-injection tests between mutation, audit insert and outbox publication.
+  - Evidence (2026-09-08): the real PostgreSQL 18.6 tenant-switch integration uses `machina_runtime` for the complete product operation and a separate ephemeral local `postgres` connection only to revoke/restore test privileges and inspect committed state.
+  - RED: test-only SHA `ce674f8f273f486612588ad509ed239925a583d9`; PostgreSQL workflow `34276052786` / job `102229204678` reached the new integration boundary after the prior kernel checks and failed exactly because `MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL` was not yet provided.
+  - GREEN harness SHA `b122b67652019f60b1c23957669564ac8b26af80`; PostgreSQL workflow `34276297236` / job `102230027609` succeeded with both `TestTenantSwitchCoordinatorAgainstPostgreSQL/audit_insert_failure` and `/outbox_insert_failure` passing.
+  - Same-SHA convergence `b6207ae57093cf27eff516e920fecb6b1125ed7d`; PostgreSQL workflow `34276625458` / job `102231124676` succeeded again with both fault cases passing and the complete PostgreSQL 18.6 tenancy/RLS kernel remaining green.
+- [x] Prove retries do not duplicate effects.
+  - Evidence (2026-09-08): each injected failure proves the original session remains active and committed receipt/audit/outbox counts remain `0/0/0`; after privilege restoration the same request commits once with counts `1/1/1`; a subsequent current-session replay returns the historical outcome without new browser secrets or mutations and the counts remain `1/1/1`.
+  - Exact verification SHA `b6207ae57093cf27eff516e920fecb6b1125ed7d`: Go workflow `34276625522` / job `102231125611` succeeded with `go mod tidy -diff`, gofmt, `go vet ./...`, repository verification, `go test -count=1 ./...`, and `go test -race -count=1 ./internal/platform/audit ./internal/platform/identity ./internal/platform/observability`; PostgreSQL workflow `34276625458` / job `102231124676` succeeded on the same SHA.
+  - Local execution in the ChatGPT runtime remains NOT_VERIFIED; no local PASS is claimed. Exact-SHA GitHub Actions is the execution evidence.
 - [x] Prove metrics reject raw email/name/prompt/tenant-slug labels.
   - Evidence (2026-09-08): `OperationMetrics` exposes only the closed `machina.operation` and `machina.outcome` attribute vocabulary, and the tenant-switch HTTP wiring records only `tenant.switch` plus a closed terminal outcome.
   - RED: test-only SHA `bf097d18bcb06e1b3fdad6fe5a9e1ecf832b21d9`; Go workflow `34265006427` / job `102192043395` failed specifically because `newTenantSwitchHTTPHandler` was still undefined after module/format checks.
