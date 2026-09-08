@@ -162,7 +162,8 @@ func ReconstructDecision(stored StoredDecision) (DecisionEvidence, error) {
 		return DecisionEvidence{}, ErrInvalidDecisionEvidence
 	}
 	const maxLatencyMilliseconds = int64((1<<63 - 1) / int64(time.Millisecond))
-	if payload.LatencyMS < 0 || payload.LatencyMS > maxLatencyMilliseconds {
+	if payload.LatencyMS < 0 || payload.LatencyMS > maxLatencyMilliseconds ||
+		!validAuthorizationMetadataDecision(stored.Decision, payload.ReasonCodes) {
 		return DecisionEvidence{}, ErrInvalidDecisionEvidence
 	}
 
