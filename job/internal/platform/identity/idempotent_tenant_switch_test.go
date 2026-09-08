@@ -114,12 +114,9 @@ func (u *recordingTenantSwitchUnit) SetTenantSwitchResponseETag(_ context.Contex
 	return true, nil
 }
 
-func (u *recordingTenantSwitchUnit) GetTenantSwitchResponseETag(_ context.Context, _ sqlcgen.GetTenantSwitchResponseETagParams) (pgtype.Text, error) {
+func (u *recordingTenantSwitchUnit) GetTenantSwitchResponseETag(_ context.Context, _ sqlcgen.GetTenantSwitchResponseETagParams) (string, error) {
 	u.etagCalls++
-	if u.responseETag == "" {
-		return pgtype.Text{}, nil
-	}
-	return pgtype.Text{String: u.responseETag, Valid: true}, nil
+	return u.responseETag, nil
 }
 
 func (u *recordingTenantSwitchUnit) InsertAuditEvent(_ context.Context, _ sqlcgen.InsertAuditEventParams) error {
