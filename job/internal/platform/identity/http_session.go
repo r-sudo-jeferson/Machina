@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/httpx"
 )
 
 const CSRFHeaderName = "X-CSRF-Token"
@@ -33,23 +34,23 @@ func NewSessionHTTPMiddleware(sessions httpSessionLookup) (*SessionHTTPMiddlewar
 func (m *SessionHTTPMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if m == nil || m.sessions == nil || next == nil {
-			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			writeSessionProblem(w, http.StatusServiceUnavailable, "session_middleware_unavailable")
 			return
 		}
 
 		presentedSessionToken, ok := singleCookieValue(r, SessionCookieName)
 		if !ok || presentedSessionToken == "" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writeSessionProblem(w, http.StatusUnauthorized, "session_required")
 			return
 		}
 
 		session, err := m.sessions.Lookup(r.Context(), presentedSessionToken)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeSessionProblem(w, http.StatusUnauthorized, "session_invalid")
 				return
 			}
-			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			writeSessionProblem(w, http.StatusServiceUnavailable, "session_store_unavailable")
 			return
 		}
 
@@ -58,7 +59,7 @@ func (m *SessionHTTPMiddleware) Wrap(next http.Handler) http.Handler {
 			csrfCookie, cookieOK := singleCookieValue(r, CSRFCookieName)
 			if len(headerValues) != 1 || headerValues[0] == "" || !cookieOK || csrfCookie == "" ||
 				!VerifyCSRF(headerValues[0], csrfCookie, session.CsrfTokenHash) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+				writeSessionProblem(w, http.StatusForbidden, "csrf_invalid")
 				return
 			}
 		}
@@ -102,4 +103,13 @@ func requiresCSRF(method string) bool {
 	default:
 		return true
 	}
+}
+
+func writeSessionProblem(w http.ResponseWriter, status int, code string) {
+	httpx.WriteProblem(w, httpx.Problem{
+		Type:   "about:blank",
+		Title:  http.StatusText(status),
+		Status: status,
+		Code:   code,
+	})
 }
