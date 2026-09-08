@@ -13,6 +13,7 @@ readonly WORKSPACE_A='20000000-0000-0000-0000-0000000000a1'
 readonly WORKSPACE_B='20000000-0000-0000-0000-0000000000b2'
 readonly CONTAINER="machina-pg-${GITHUB_RUN_ID:-local}-$$"
 TENANT_SWITCH_INTEGRATION_DIR=''
+AUDIT_INTEGRATION_DIR=''
 
 readonly MIGRATIONS=(
   db/migrations/0001_schemas.sql
@@ -41,6 +42,9 @@ fail() {
 cleanup() {
   if [[ -n "$TENANT_SWITCH_INTEGRATION_DIR" ]]; then
     rm -rf -- "$TENANT_SWITCH_INTEGRATION_DIR"
+  fi
+  if [[ -n "$AUDIT_INTEGRATION_DIR" ]]; then
+    rm -rf -- "$AUDIT_INTEGRATION_DIR"
   fi
   docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
 }
@@ -184,6 +188,24 @@ run_go_tenant_switch_integration() {
   TENANT_SWITCH_INTEGRATION_DIR=''
 }
 
+run_go_audit_integration() {
+  [[ "${MACHINA_RUN_AUDIT_GO_INTEGRATION:-0}" == '1' ]] || return 0
+  command -v go >/dev/null 2>&1 || fail 'Go is required for the audit integration boundary'
+
+  local integration_binary
+  AUDIT_INTEGRATION_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/machina-audit-go.XXXXXX")"
+  integration_binary="${AUDIT_INTEGRATION_DIR}/audit.test"
+  go test -c -o "$integration_binary" ./internal/platform/audit
+  docker cp "$integration_binary" "$CONTAINER:/tmp/machina-audit.test" >/dev/null
+  docker exec "$CONTAINER" env \
+    MACHINA_AUDIT_DATABASE_URL="postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
+    /tmp/machina-audit.test \
+    -test.run '^TestDecisionEvidenceRoundTripPostgreSQL$' \
+    -test.v
+  rm -rf -- "$AUDIT_INTEGRATION_DIR"
+  AUDIT_INTEGRATION_DIR=''
+}
+
 source scripts/dbtest/check_last_owner.sh
 source scripts/dbtest/check_identity_session_boundary.sh
 source scripts/dbtest/check_session_context_boundary.sh
@@ -194,6 +216,7 @@ source scripts/dbtest/check_session_context_switch.sh
 source scripts/dbtest/check_session_generation.sh
 source scripts/dbtest/check_tenant_switch_idempotency_scope.sh
 run_go_tenant_switch_integration
+run_go_audit_integration
 source scripts/dbtest/check_idempotency_boundary.sh
 
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
