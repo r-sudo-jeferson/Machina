@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,16 +12,16 @@ import (
 )
 
 type recordingSessionQueries struct {
-	createParams  sqlcgen.CreateSessionParams
-	createCalls   int
-	lookupHash    []byte
-	lookupCalls   int
-	lookupRow     sqlcgen.GetActiveSessionRow
-	lookupErr     error
-	revokeHash    []byte
-	revokeCalls   int
-	upsertParams  sqlcgen.UpsertSubjectParams
-	upsertCalls   int
+	createParams sqlcgen.CreateSessionParams
+	createCalls  int
+	lookupHash   []byte
+	lookupCalls  int
+	lookupRow    sqlcgen.GetActiveSessionRow
+	lookupErr    error
+	revokeHash   []byte
+	revokeCalls  int
+	upsertParams sqlcgen.UpsertSubjectParams
+	upsertCalls  int
 }
 
 func (q *recordingSessionQueries) CreateSession(_ context.Context, arg sqlcgen.CreateSessionParams) (pgtype.UUID, error) {
@@ -89,7 +90,7 @@ func TestSessionStoreLookupHashesPresentedSessionToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lookup() error = %v", err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Lookup() = %#v, want %#v", got, want)
 	}
 	wantHash := HashToken("presented-session-token")
