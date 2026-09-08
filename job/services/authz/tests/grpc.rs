@@ -10,6 +10,7 @@ use machina_authz::proto::authorization_service_server::AuthorizationService;
 use tonic::{Code, Request as TonicRequest};
 
 const SNAPSHOT_HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const TENANT_ID: &str = "00000000-0000-0000-0000-0000000000a1";
 
 fn ready<F: Future>(future: F) -> F::Output {
     let waker = Waker::noop();
@@ -91,7 +92,7 @@ fn decide_denies_fail_closed_when_exact_policy_snapshot_is_missing() {
 
     let response = ready(AuthorizationService::decide(
         &handler,
-        TonicRequest::new(request("tenant-a", 7)),
+        TonicRequest::new(request(TENANT_ID, 7)),
     ))
     .expect("transport response")
     .into_inner();
@@ -105,12 +106,12 @@ fn decide_denies_fail_closed_when_exact_policy_snapshot_is_missing() {
 #[test]
 fn decide_translates_typed_request_context_and_preserves_cedar_allow() {
     let mut cache = PolicyCache::new();
-    cache.insert("tenant-a", permit_snapshot(7));
+    cache.insert(TENANT_ID, permit_snapshot(7));
     let handler = AuthorizationServiceHandler::new(cache);
 
     let response = ready(AuthorizationService::decide(
         &handler,
-        TonicRequest::new(request("tenant-a", 7)),
+        TonicRequest::new(request(TENANT_ID, 7)),
     ))
     .expect("transport response")
     .into_inner();
@@ -124,9 +125,9 @@ fn decide_translates_typed_request_context_and_preserves_cedar_allow() {
 #[test]
 fn structurally_invalid_cedar_identity_is_rejected_before_evaluation() {
     let mut cache = PolicyCache::new();
-    cache.insert("tenant-a", permit_snapshot(7));
+    cache.insert(TENANT_ID, permit_snapshot(7));
     let handler = AuthorizationServiceHandler::new(cache);
-    let mut malformed = request("tenant-a", 7);
+    let mut malformed = request(TENANT_ID, 7);
     malformed.resource_type = "Platform Context".to_owned();
 
     let status = ready(AuthorizationService::decide(
