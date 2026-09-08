@@ -92,8 +92,12 @@ func TestReconstructDecisionFailsClosed(t *testing.T) {
 			v.SafeMetadata = []byte(`{"latency_ms":-1,"reason_codes":["explicit_forbid"]}`)
 			return v
 		}},
-		{name: "overflow latency", mutate: func(v StoredDecision) StoredDecision {
+		{name: "json integer overflow", mutate: func(v StoredDecision) StoredDecision {
 			v.SafeMetadata = []byte(`{"latency_ms":9223372036854775808,"reason_codes":["explicit_forbid"]}`)
+			return v
+		}},
+		{name: "duration overflow", mutate: func(v StoredDecision) StoredDecision {
+			v.SafeMetadata = []byte(`{"latency_ms":9223372036855,"reason_codes":["explicit_forbid"]}`)
 			return v
 		}},
 		{name: "unknown reason", mutate: func(v StoredDecision) StoredDecision {
