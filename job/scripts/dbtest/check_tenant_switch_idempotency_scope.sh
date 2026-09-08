@@ -144,7 +144,7 @@ expect_equals '1' "$(query_as postgres "SELECT count(*) FROM ops.idempotency_key
 
 # The same session/key cannot target another authorized tenant while live.
 expect_equals 'conflict' "$(query_as "$RUNTIME_ROLE" "BEGIN; SELECT mapping_state FROM iam.bind_tenant_switch_idempotency(decode('${SCOPE_NEW_HASH}','hex'),'${SCOPE_KEY}','${SCOPE_BODY_HASH_A}','${TENANT_A}'); ROLLBACK;" | tail -n 1)" 'live same-session key with a different target did not conflict'
-expect_failure "$RUNTIME_ROLE" "SELECT * FROM iam.bind_tenant_switch_idempotency(decode('${SCOPE_NEW_HASH}','hex'),'${SCOPE_KEY}','${SCOPE_BODY_HASH_B}','${TENANT_B}')" 'binder accepted a request hash without a transaction'
+expect_failure "$RUNTIME_ROLE" "SELECT * FROM iam.bind_tenant_switch_idempotency(decode('${SCOPE_NEW_HASH}','hex'),'${SCOPE_KEY_SECOND}','${SCOPE_BODY_HASH_B}','${TENANT_B}')" 'binder committed an incomplete scope in an uncoordinated statement'
 
 # Another session can bind its own identity-stable mapping, but the tenant
 # receipt key serializes it as a conflict and never discloses the winner body.
