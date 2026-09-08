@@ -127,3 +127,11 @@ printf 'authztest: PostgreSQL %s policy source fixture ready on loopback\n' "$ac
 
 MACHINA_AUTHZ_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo +1.98.1 test --locked --test process_database -- --ignored --nocapture
+
+cargo +1.98.1 build --locked --bin machina-authz
+readonly AUTHZ_BINARY="$(pwd)/target/debug/machina-authz"
+[[ -x "$AUTHZ_BINARY" ]] || fail "authorization binary is not executable: $AUTHZ_BINARY"
+
+MACHINA_AUTHZ_GO_INTEGRATION_DATABASE_URL="$DATABASE_URL" \
+MACHINA_AUTHZ_GO_INTEGRATION_BINARY="$AUTHZ_BINARY" \
+  go test -count=1 -run '^TestGoClientAuthorizesAgainstRustPostgres$' ./internal/platform/authz
