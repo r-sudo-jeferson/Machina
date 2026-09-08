@@ -137,3 +137,16 @@ fn structurally_invalid_cedar_identity_is_rejected_before_evaluation() {
 
     assert_eq!(status.code(), Code::InvalidArgument);
 }
+
+#[test]
+fn malformed_tenant_identity_is_rejected_before_policy_lookup() {
+    let handler = AuthorizationServiceHandler::new(PolicyCache::new());
+
+    let status = ready(AuthorizationService::decide(
+        &handler,
+        TonicRequest::new(request("not-a-uuid", 7)),
+    ))
+    .expect_err("malformed tenant identity must not reach policy lookup");
+
+    assert_eq!(status.code(), Code::InvalidArgument);
+}
