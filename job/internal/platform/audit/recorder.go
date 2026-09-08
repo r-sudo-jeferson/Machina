@@ -104,7 +104,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 	}
 	sum := sha256.Sum256(canonical)
 	return sqlcgen.InsertAuditEventParams{
-		TenantID: event.TenantID, ID: event.ID, ActorSubjectID: event.ActorSubjectID,
+		TenantID: event.TenantID, EventID: event.ID, ActorSubjectID: event.ActorSubjectID,
 		EventType: event.EventType, Action: event.Action, Decision: event.Decision,
 		PolicyVersion: event.PolicyVersion, CorrelationID: event.CorrelationID, SafeMetadata: metadata,
 		PreviousHash: append([]byte(nil), event.PreviousHash...), EventHash: sum[:],
