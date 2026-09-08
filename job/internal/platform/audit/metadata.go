@@ -79,6 +79,13 @@ func (m SafeMetadata) marshal() ([]byte, error) {
 	return append([]byte(nil), m.encoded...), nil
 }
 
+func (m SafeMetadata) marshalForDecision(decision string) ([]byte, error) {
+	if m.kind == safeMetadataAuthorizationDecision && m.decision != decision {
+		return nil, ErrInvalidSafeMetadata
+	}
+	return m.marshal()
+}
+
 func validAuthorizationMetadataDecision(decision string, reasonCodes []string) bool {
 	switch decision {
 	case "allow":
