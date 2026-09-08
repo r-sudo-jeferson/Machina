@@ -27,6 +27,7 @@ type Querier interface {
 	ListWorkspaces(ctx context.Context, tenantID pgtype.UUID) ([]IamWorkspace, error)
 	RevokeSession(ctx context.Context, sessionTokenHash []byte) error
 	RotateSession(ctx context.Context, arg RotateSessionParams) (RotateSessionRow, error)
+	SwitchSessionContext(ctx context.Context, arg SwitchSessionContextParams) (SwitchSessionContextRow, error)
 	UpsertPreference(ctx context.Context, arg UpsertPreferenceParams) (IamPreference, error)
 	UpsertSubject(ctx context.Context, arg UpsertSubjectParams) (pgtype.UUID, error)
 }
