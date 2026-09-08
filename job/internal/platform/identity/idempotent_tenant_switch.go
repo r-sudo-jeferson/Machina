@@ -15,10 +15,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/audit"
 	platformdb "github.com/r-sudo-jeferson/Machina/job/internal/platform/db"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/idempotency"
-	"github.com/r-sudo-jeferson/Machina/job/internal/platform/audit"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/outbox"
 )
 
@@ -250,7 +250,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	metadata := map[string]any{
 		"target_tenant_id":    targetTenantText,
 		"target_workspace_id": targetWorkspaceText,
-		"session_generation": response.Active.SessionGeneration,
+		"session_generation":  response.Active.SessionGeneration,
 	}
 	recorder, err := audit.NewRecorder(unit)
 	if err != nil {
@@ -280,7 +280,7 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		EventVersion:  1,
 		OccurredAt:    eventTime,
 		TenantID:      request.TargetTenantID,
-		WorkspaceID:    switched.ActiveWorkspaceID,
+		WorkspaceID:   switched.ActiveWorkspaceID,
 		CorrelationID: request.CorrelationID,
 		ActorID:       response.Identity.ID,
 		Payload:       metadata,
@@ -437,27 +437,27 @@ type tenantSwitchCapability struct {
 }
 
 type tenantSwitchAuthorizedContext struct {
-	Identity      tenantSwitchIdentity     `json:"identity"`
-	Tenant        tenantSwitchTenant       `json:"tenant"`
-	Workspace     tenantSwitchWorkspace    `json:"workspace"`
-	Capabilities  []tenantSwitchCapability `json:"capabilities"`
-	PolicyVersion int64                   `json:"policy_version"`
-	SessionGeneration int64               `json:"-"`
+	Identity          tenantSwitchIdentity     `json:"identity"`
+	Tenant            tenantSwitchTenant       `json:"tenant"`
+	Workspace         tenantSwitchWorkspace    `json:"workspace"`
+	Capabilities      []tenantSwitchCapability `json:"capabilities"`
+	PolicyVersion     int64                    `json:"policy_version"`
+	SessionGeneration int64                    `json:"-"`
 }
 
 type tenantSwitchSessionContext struct {
-	Identity          tenantSwitchIdentity          `json:"identity"`
-	Active            tenantSwitchAuthorizedContext `json:"active"`
-	AvailableTenants  []tenantSwitchTenant           `json:"available_tenants"`
-	ExpiresAt         time.Time                     `json:"expires_at"`
+	Identity         tenantSwitchIdentity          `json:"identity"`
+	Active           tenantSwitchAuthorizedContext `json:"active"`
+	AvailableTenants []tenantSwitchTenant          `json:"available_tenants"`
+	ExpiresAt        time.Time                     `json:"expires_at"`
 }
 
 func (response tenantSwitchSessionContext) outcome() TenantSwitchOutcome {
 	return TenantSwitchOutcome{
-		ActiveTenantID: response.Active.Tenant.ID,
+		ActiveTenantID:    response.Active.Tenant.ID,
 		ActiveWorkspaceID: response.Active.Workspace.ID,
 		SessionGeneration: response.Active.SessionGeneration,
-		SessionExpiresAt: response.ExpiresAt.UTC(),
+		SessionExpiresAt:  response.ExpiresAt.UTC(),
 	}
 }
 
@@ -485,7 +485,7 @@ func buildTenantSwitchResponse(
 		return tenantSwitchSessionContext{}, nil, "", fmt.Errorf("load tenant-switch target tenant: %w", err)
 	}
 	workspaceRow, err := unit.GetWorkspace(ctx, sqlcgen.GetWorkspaceParams{
-		TenantID: targetTenantID,
+		TenantID:    targetTenantID,
 		WorkspaceID: switched.ActiveWorkspaceID,
 	})
 	if err != nil {
@@ -542,7 +542,7 @@ func buildTenantSwitchResponse(
 			SessionGeneration: bind.Generation + 1,
 		},
 		AvailableTenants: available,
-		ExpiresAt: switched.ExpiresAt.UTC(),
+		ExpiresAt:        switched.ExpiresAt.UTC(),
 	}
 	body, err := marshalTenantSwitchResponse(response)
 	if err != nil {
@@ -783,74 +783,110 @@ type sqlTenantSwitchUnit struct {
 }
 
 func (u sqlTenantSwitchUnit) CreateSession(ctx context.Context, arg sqlcgen.CreateSessionParams) (pgtype.UUID, error) {
-	if u.queries == nil { return pgtype.UUID{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return pgtype.UUID{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.CreateSession(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) GetActiveSession(ctx context.Context, arg []byte) (sqlcgen.GetActiveSessionRow, error) {
-	if u.queries == nil { return sqlcgen.GetActiveSessionRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.GetActiveSessionRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.GetActiveSession(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) RevokeSession(ctx context.Context, arg []byte) error {
-	if u.queries == nil { return ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.RevokeSession(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) RotateSession(ctx context.Context, arg sqlcgen.RotateSessionParams) (sqlcgen.RotateSessionRow, error) {
-	if u.queries == nil { return sqlcgen.RotateSessionRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.RotateSessionRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.RotateSession(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) SwitchSessionContext(ctx context.Context, arg sqlcgen.SwitchSessionContextParams) (sqlcgen.SwitchSessionContextRow, error) {
-	if u.queries == nil { return sqlcgen.SwitchSessionContextRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.SwitchSessionContextRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.SwitchSessionContext(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) BindTenantSwitchIdempotency(ctx context.Context, arg sqlcgen.BindTenantSwitchIdempotencyParams) (sqlcgen.BindTenantSwitchIdempotencyRow, error) {
-	if u.queries == nil { return sqlcgen.BindTenantSwitchIdempotencyRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.BindTenantSwitchIdempotencyRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.BindTenantSwitchIdempotency(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) FinishTenantSwitchIdempotency(ctx context.Context, arg sqlcgen.FinishTenantSwitchIdempotencyParams) (sqlcgen.FinishTenantSwitchIdempotencyRow, error) {
-	if u.queries == nil { return sqlcgen.FinishTenantSwitchIdempotencyRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.FinishTenantSwitchIdempotencyRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.FinishTenantSwitchIdempotency(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) ClaimIdempotencyKey(ctx context.Context, arg sqlcgen.ClaimIdempotencyKeyParams) (sqlcgen.ClaimIdempotencyKeyRow, error) {
-	if u.queries == nil { return sqlcgen.ClaimIdempotencyKeyRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.ClaimIdempotencyKeyRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.ClaimIdempotencyKey(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) CompleteIdempotencyKey(ctx context.Context, arg sqlcgen.CompleteIdempotencyKeyParams) (bool, error) {
-	if u.queries == nil { return false, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return false, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.CompleteIdempotencyKey(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) GetSessionIdentity(ctx context.Context, arg []byte) (sqlcgen.GetSessionIdentityRow, error) {
-	if u.queries == nil { return sqlcgen.GetSessionIdentityRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.GetSessionIdentityRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.GetSessionIdentity(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) ListSessionTenants(ctx context.Context, arg []byte) ([]sqlcgen.ListSessionTenantsRow, error) {
-	if u.queries == nil { return nil, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return nil, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.ListSessionTenants(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) GetTenant(ctx context.Context, arg pgtype.UUID) (sqlcgen.IamTenant, error) {
-	if u.queries == nil { return sqlcgen.IamTenant{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.IamTenant{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.GetTenant(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) GetWorkspace(ctx context.Context, arg sqlcgen.GetWorkspaceParams) (sqlcgen.IamWorkspace, error) {
-	if u.queries == nil { return sqlcgen.IamWorkspace{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.IamWorkspace{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.GetWorkspace(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) GetActivePolicySnapshot(ctx context.Context, arg pgtype.UUID) (sqlcgen.GetActivePolicySnapshotRow, error) {
-	if u.queries == nil { return sqlcgen.GetActivePolicySnapshotRow{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return sqlcgen.GetActivePolicySnapshotRow{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.GetActivePolicySnapshot(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) SetTenantSwitchResponseETag(ctx context.Context, arg sqlcgen.SetTenantSwitchResponseETagParams) (bool, error) {
-	if u.queries == nil { return false, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return false, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.SetTenantSwitchResponseETag(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) GetTenantSwitchResponseETag(ctx context.Context, arg sqlcgen.GetTenantSwitchResponseETagParams) (pgtype.Text, error) {
-	if u.queries == nil { return pgtype.Text{}, ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return pgtype.Text{}, ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.GetTenantSwitchResponseETag(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) InsertAuditEvent(ctx context.Context, arg sqlcgen.InsertAuditEventParams) error {
-	if u.queries == nil { return ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.InsertAuditEvent(ctx, arg)
 }
 func (u sqlTenantSwitchUnit) EnqueueOutboxEvent(ctx context.Context, arg sqlcgen.EnqueueOutboxEventParams) error {
-	if u.queries == nil { return ErrInvalidTenantSwitchCoordinatorConfig }
+	if u.queries == nil {
+		return ErrInvalidTenantSwitchCoordinatorConfig
+	}
 	return u.queries.EnqueueOutboxEvent(ctx, arg)
 }
