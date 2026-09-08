@@ -30,6 +30,7 @@ readonly MIGRATIONS=(
   db/migrations/0013_idempotency_boundary.sql
   db/migrations/0014_session_generation.sql
   db/migrations/0015_tenant_switch_idempotency_scope.sql
+  db/migrations/0016_tenant_switch_response_etag.sql
 )
 
 fail() {
@@ -129,6 +130,12 @@ INSERT INTO iam.workspaces (tenant_id, id, slug, display_name) VALUES
 INSERT INTO iam.memberships (tenant_id, subject_id, starter_role, status) VALUES
   ('${TENANT_A}', '${SUBJECT_A}', 'owner', 'active'),
   ('${TENANT_B}', '${SUBJECT_B}', 'owner', 'active');
+INSERT INTO authz.policy_snapshots (
+  tenant_id, version, snapshot_hash, cedar_schema, cedar_policies,
+  status, created_by_subject_id, activated_at
+) VALUES
+  ('${TENANT_A}', 1, repeat('a', 64), '{}'::jsonb, 'permit(principal, action, resource);', 'active', '${SUBJECT_A}', clock_timestamp()),
+  ('${TENANT_B}', 1, repeat('b', 64), '{}'::jsonb, 'permit(principal, action, resource);', 'active', '${SUBJECT_B}', clock_timestamp());
 SQL
 
 missing_context_count="$(query_as "$RUNTIME_ROLE" 'SELECT count(*) FROM iam.workspaces')"
