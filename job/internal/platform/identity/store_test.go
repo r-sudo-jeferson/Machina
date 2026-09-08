@@ -67,7 +67,6 @@ func (q *recordingSessionQueries) SwitchSessionContext(_ context.Context, arg sq
 		ReplacementSessionTokenHash: append([]byte(nil), arg.ReplacementSessionTokenHash...),
 		ReplacementCsrfTokenHash:    append([]byte(nil), arg.ReplacementCsrfTokenHash...),
 		TargetTenantID:              arg.TargetTenantID,
-		TargetWorkspaceID:           arg.TargetWorkspaceID,
 	}
 	return q.switchRow, q.switchErr
 }
@@ -197,7 +196,7 @@ func TestSessionStoreRotateRejectsMissingReusedOrCollidingSecretsBeforeDatabase(
 	}
 
 	for _, tt := range tests {
-		tt := tt
+		t := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			queries := &recordingSessionQueries{}
@@ -223,7 +222,7 @@ func TestSessionStoreRotatePreservesDatabaseError(t *testing.T) {
 	}
 }
 
-func TestSessionStoreSwitchContextHashesSecretsAndPassesOnlyRequestedTarget(t *testing.T) {
+func TestSessionStoreSwitchContextHashesSecretsAndPassesOnlyRequestedTenant(t *testing.T) {
 	t.Parallel()
 
 	tenantID := pgtype.UUID{Bytes: [16]byte{6}, Valid: true}
@@ -243,7 +242,6 @@ func TestSessionStoreSwitchContextHashesSecretsAndPassesOnlyRequestedTarget(t *t
 		"presented-new-session",
 		"presented-new-csrf",
 		tenantID,
-		workspaceID,
 	)
 	if err != nil {
 		t.Fatalf("SwitchContext() error = %v", err)
@@ -267,8 +265,8 @@ func TestSessionStoreSwitchContextHashesSecretsAndPassesOnlyRequestedTarget(t *t
 	if string(queries.switchParams.ReplacementCsrfTokenHash) != string(wantCSRFHash[:]) {
 		t.Fatal("SwitchContext() did not hash the replacement CSRF token")
 	}
-	if queries.switchParams.TargetTenantID != tenantID || queries.switchParams.TargetWorkspaceID != workspaceID {
-		t.Fatal("SwitchContext() changed the requested target before the server-side validation boundary")
+	if queries.switchParams.TargetTenantID != tenantID {
+		t.Fatal("SwitchContext() changed the requested tenant before the server-side validation boundary")
 	}
 }
 
@@ -276,31 +274,28 @@ func TestSessionStoreSwitchContextRejectsInvalidInputBeforeDatabase(t *testing.T
 	t.Parallel()
 
 	validTenant := pgtype.UUID{Bytes: [16]byte{9}, Valid: true}
-	validWorkspace := pgtype.UUID{Bytes: [16]byte{10}, Valid: true}
 	tests := []struct {
-		name      string
-		old       string
-		new       string
-		newCSRF   string
-		tenant    pgtype.UUID
-		workspace pgtype.UUID
+		name    string
+		old     string
+		new     string
+		newCSRF string
+		tenant  pgtype.UUID
 	}{
-		{name: "missing old session", old: "", new: "new-session", newCSRF: "new-csrf", tenant: validTenant, workspace: validWorkspace},
-		{name: "missing new session", old: "old-session", new: "", newCSRF: "new-csrf", tenant: validTenant, workspace: validWorkspace},
-		{name: "missing new csrf", old: "old-session", new: "new-session", newCSRF: "", tenant: validTenant, workspace: validWorkspace},
-		{name: "reused session", old: "same-session", new: "same-session", newCSRF: "new-csrf", tenant: validTenant, workspace: validWorkspace},
-		{name: "session csrf collision", old: "old-session", new: "same-secret", newCSRF: "same-secret", tenant: validTenant, workspace: validWorkspace},
-		{name: "invalid tenant", old: "old-session", new: "new-session", newCSRF: "new-csrf", workspace: validWorkspace},
-		{name: "invalid workspace", old: "old-session", new: "new-session", newCSRF: "new-csrf", tenant: validTenant},
+		{name: "missing old session", old: "", new: "new-session", newCSRF: "new-csrf", tenant: validTenant},
+		{name: "missing new session", old: "old-session", new: "", newCSRF: "new-csrf", tenant: validTenant},
+		{name: "missing new csrf", old: "old-session", new: "new-session", newCSRF: "", tenant: validTenant},
+		{name: "reused session", old: "same-session", new: "same-session", newCSRF: "new-csrf", tenant: validTenant},
+		{name: "session csrf collision", old: "old-session", new: "same-secret", newCSRF: "same-secret", tenant: validTenant},
+		{name: "invalid tenant", old: "old-session", new: "new-session", newCSRF: "new-csrf"},
 	}
 
 	for _, tt := range tests {
-		tt := tt
+		t := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			queries := &recordingSessionQueries{}
 			store := NewSessionStore(queries)
-			if _, err := store.SwitchContext(context.Background(), tt.old, tt.new, tt.newCSRF, tt.tenant, tt.workspace); err == nil {
+			if _, err := store.SwitchContext(context.Background(), tt.old, tt.new, tt.newCSRF, tt.tenant); err == nil {
 				t.Fatal("SwitchContext() accepted invalid input")
 			}
 			if queries.switchCalls != 0 {
@@ -322,7 +317,6 @@ func TestSessionStoreSwitchContextPreservesDatabaseError(t *testing.T) {
 		"new-session",
 		"new-csrf",
 		pgtype.UUID{Bytes: [16]byte{11}, Valid: true},
-		pgtype.UUID{Bytes: [16]byte{12}, Valid: true},
 	); !errors.Is(err, wantErr) {
 		t.Fatalf("SwitchContext() error = %v, want errors.Is(_, %v)", err, wantErr)
 	}
