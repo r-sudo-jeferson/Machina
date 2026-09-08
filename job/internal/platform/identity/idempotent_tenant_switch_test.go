@@ -172,9 +172,13 @@ func validTenantSwitchSwitchRow() sqlcgen.SwitchSessionContextRow {
 	}
 }
 
+func tenantSwitchCoordinatorResponseBody() []byte {
+	return []byte(`{"identity":{"id":"00000000-0000-0000-0000-000000000002","display_name":"Subject A"},"active":{"identity":{"id":"00000000-0000-0000-0000-000000000002","display_name":"Subject A"},"tenant":{"id":"00000000-0000-0000-0000-000000000002","slug":"tenant-b","display_name":"Tenant B","status":"active"},"workspace":{"id":"00000000-0000-0000-0000-000000000004","tenant_id":"00000000-0000-0000-0000-000000000002","slug":"main","display_name":"Main"},"capabilities":[{"id":"session.read","allowed":true},{"id":"tenant.create","allowed":true},{"id":"tenant.switch","allowed":true},{"id":"workspace.read","allowed":true},{"id":"context.read","allowed":true},{"id":"ask.context.read","allowed":true}],"policy_version":1},"available_tenants":[{"id":"00000000-0000-0000-0000-000000000002","slug":"tenant-b","display_name":"Tenant B","status":"active"}],"expires_at":"2026-09-09T12:00:00Z"}`)
+}
+
 func claimedTenantSwitchUnit() *recordingTenantSwitchUnit {
 	row := validTenantSwitchBindRow()
-	_, canonical, err := unmarshalTenantSwitchResponse(tenantSwitchHTTPResponseBody())
+	_, canonical, err := unmarshalTenantSwitchResponse(tenantSwitchCoordinatorResponseBody())
 	if err != nil {
 		panic(err)
 	}
@@ -247,7 +251,7 @@ func TestTenantSwitchCoordinatorReplayDoesNotGenerateOrRotate(t *testing.T) {
 	unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
 		ClaimState:     "replay",
 		ResponseStatus: 200,
-		ResponseBody:   tenantSwitchHTTPResponseBody(),
+		ResponseBody:   tenantSwitchCoordinatorResponseBody(),
 		CorrelationID:  validTenantSwitchRequest().CorrelationID,
 	}
 	coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
@@ -402,7 +406,7 @@ func TestTenantSwitchCoordinatorRejectsInvalidScopeAndMalformedReplayOutcome(t *
 		unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
 			ClaimState:     "replay",
 			ResponseStatus: 200,
-			ResponseBody:   []byte(`{"active_tenant_id":"00000000-0000-0000-0000-000000000002","active_workspace_id":"00000000-0000-0000-0000-000000000004","session_generation":8,"session_expires_at":"2026-09-09T12:00:00Z"}`),
+			ResponseBody:   tenantSwitchCoordinatorResponseBody(),
 			CorrelationID:  validTenantSwitchRequest().CorrelationID,
 		}
 		coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
