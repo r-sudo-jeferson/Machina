@@ -27,7 +27,7 @@ type Querier interface {
 	GetActiveSession(ctx context.Context, sessionTokenHash []byte) (GetActiveSessionRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (IamMembership, error)
 	GetPreference(ctx context.Context, arg GetPreferenceParams) (IamPreference, error)
-	GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (string, error)
+	GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (pgtype.Text, error)
 	GetSessionIdentity(ctx context.Context, sessionTokenHash []byte) (GetSessionIdentityRow, error)
 	GetTenant(ctx context.Context, tenantID pgtype.UUID) (IamTenant, error)
 	GetWorkspace(ctx context.Context, arg GetWorkspaceParams) (IamWorkspace, error)
