@@ -8,6 +8,8 @@ on:
       - 'job/contracts/proto/authz/v1/authz.proto'
       - 'job/gen/authz/v1/**'
       - 'job/scripts/protogen/**'
+      - 'job/go.mod'
+      - 'job/go.sum'
       - '.github/workflows/verify-authz-proto.yml'
 
 permissions:
@@ -44,3 +46,7 @@ jobs:
       - name: Verify generated authz Go protobuf
         working-directory: job
         run: bash ./scripts/protogen/run.sh --check
+
+      - name: Compile generated authz Go package
+        working-directory: job
+        run: go test -count=1 ./gen/authz/v1
