@@ -194,7 +194,7 @@ Expected after restoration: PASS.
 - Consumes: `*observability.OperationMetrics`; existing `NewTenantSwitchHTTPHandler(tenantSwitchExecutor)` remains source-compatible.
 - Produces: a package-private constructor `newTenantSwitchHTTPHandler(tenantSwitchExecutor, *observability.OperationMetrics, func() time.Time)` for deterministic tests.
 
-- [ ] **Step 1: Write failing handler metric tests**
+- [x] **Step 1: Write failing handler metric tests**
 
 Create an SDK manual reader and injected operation metrics. Require one point for each executor-reached terminal class:
 
@@ -208,7 +208,9 @@ Create an SDK manual reader and injected operation metrics. Require one point fo
 
 Use a deterministic clock that advances by `25*time.Millisecond`. Existing status, body, ETag, `Cache-Control`, and cookie assertions remain unchanged.
 
-- [ ] **Step 2: Run the handler tests and observe RED**
+- [x] **Step 2: Run the handler tests and observe RED**
+
+RED was captured on the test-only SHA `bf097d18bcb06e1b3fdad6fe5a9e1ecf832b21d9` before any production implementation. Exact-SHA Go workflow `34265006427` / job `102192043395` passed module and formatting checks and failed at compilation/static analysis only because the planned private constructor `newTenantSwitchHTTPHandler` did not yet exist. The literal focused command below was not executed locally because outbound DNS blocked repository cloning; no local RED command is claimed.
 
 Run:
 
@@ -218,13 +220,13 @@ go test -count=1 ./internal/platform/identity -run 'TestTenantSwitchHTTPHandler.
 
 Expected: FAIL because the injection constructor and recording are absent.
 
-- [ ] **Step 3: Add metric recording without changing HTTP authority**
+- [x] **Step 3: Add metric recording without changing HTTP authority**
 
 The public constructor obtains `otel.Meter("github.com/r-sudo-jeferson/Machina/job/internal/platform/identity")` and delegates to the private constructor. The private constructor rejects nil executor, metrics, or clock. Start timing only after session/CSRF/body validation and immediately before `switcher.Switch`. Record exactly once after the executor or result validation returns. Derive outcome exclusively from typed errors, HTTP status, and `result.Replay`; never use request data as a label.
 
 Metric recording errors are safe to ignore at the HTTP layer because validation prevents emission; they must not change the business response. Add a comment documenting that invariant.
 
-- [ ] **Step 4: Re-run existing and new HTTP tests**
+- [x] **Step 4: Re-run existing and new HTTP tests**
 
 Run:
 
@@ -234,6 +236,15 @@ go test -race -count=1 ./internal/platform/identity ./internal/platform/observab
 ```
 
 Expected: PASS with unchanged HTTP responses and cookies.
+
+**Task 3 execution evidence — 2026-09-08**
+
+- Initial implementation GREEN: SHA `ac613147025177deeef4cda49e789011c0efbf5a`; Go workflow `34265228009` / job `102192785260` succeeded after the RED state.
+- Mutation check: SHA `81ac5f8f38af7a3238985f4f27febce4dde5f533` intentionally changed replay telemetry to `success`; Go workflow `34265511792` / job `102193744785` failed exactly in `TestTenantSwitchHTTPHandlerRecordsTerminalMetrics/immutable_replay`, proving the new test detects the outcome regression.
+- Production restoration: SHA `03ae1a913ce8f85a4f2fe6d6749ef44f0e8aa35d` restored replay telemetry byte-for-byte. Go workflow `34265685051` / job `102194331109`, PostgreSQL workflow `34265684912` / job `102194331039`, and formatting workflow `34265684916` succeeded.
+- Complete Go verification: SHA `dac86be3dffff91624cb967d5a8a0a6852d70e74` adds only the durable race-gate workflow glue. Go workflow `34265797509` / job `102194712088` succeeded on the exact SHA, including `go mod tidy -diff`, gofmt, `go vet ./...`, repository verification, `go test -count=1 ./...`, and `go test -race -count=1 ./internal/platform/observability ./internal/platform/identity`. Formatting workflow `34265797442` also succeeded.
+- The handler metric path emits only `machina.operation=tenant.switch` plus one closed `machina.outcome`; no request identifier, tenant/workspace/session/user identifier, correlation ID, idempotency key, cookie, CSRF value, name, email, prompt, or slug is supplied to `OperationMetrics`.
+- Local execution in the ChatGPT runtime is `NOT_VERIFIED` because outbound DNS prevented repository cloning. The exact-SHA GitHub Actions runs above are the execution evidence; no local PASS is claimed.
 
 ### Task 4: Repository verification and durable evidence
 
@@ -260,6 +271,8 @@ go test -race -count=1 ./internal/platform/observability ./internal/platform/ide
 
 Expected: every command passes.
 
+Fresh post-Task-3 local execution is `NOT_VERIFIED` in this ChatGPT runtime because outbound DNS blocked cloning. The same complete required gate, including race detection, was executed successfully by exact-SHA GitHub Actions at `dac86be3dffff91624cb967d5a8a0a6852d70e74` (run/job `34265797509` / `102194712088`). This note does not replace or reinterpret any earlier local evidence represented by the pre-existing checked state.
+
 - [x] **Step 2: Publish one atomic implementation commit and observe exact-SHA CI**
 
 Safe code checkpoint `318260aeebbef6f0796ce52f195ba68b16194f51`
@@ -276,10 +289,12 @@ feat(mch-s001): enforce safe operation metrics
 
 Require the Go construction workflow and any path-selected database workflow to finish successfully on the exact implementation SHA. Record run and job IDs.
 
-- [ ] **Step 3: Update only the proven parent-plan checkbox**
+- [x] **Step 3: Update only the proven parent-plan checkbox**
 
-Mark `Prove metrics reject raw email/name/prompt/tenant-slug labels` complete and append the exact implementation SHA, local race result, workflow run ID, and job ID. Do not mark the Task 6 heading, Gate I, full Slice verification, GAUNTLET, candidate freeze, or promotion complete.
+Marked only `Prove metrics reject raw email/name/prompt/tenant-slug labels` complete in `job/docs/engineering/MCH-S001-implementation-plan.md`, with RED, mutation-kill, restored implementation, exact-SHA Go/PostgreSQL workflow, race-gate, and `NOT_VERIFIED` local-execution evidence. The Task 6 heading, Gate I, full Slice verification, GAUNTLET, candidate freeze, and promotion remain open.
 
 - [ ] **Step 4: Self-review the plan execution**
 
 Confirm the final diff contains no placeholders, prerelease dependencies, arbitrary metric-label API, raw sensitive examples beyond synthetic test sentinels, or changes outside `job`. A separate independent critic still owns final acceptance.
+
+This step remains open. The implementation intentionally strengthened existing CI glue at `.github/workflows/verify-binding.yml` to execute the required race gate, so the literal "no changes outside `job`" condition is not true. The repository policy explicitly permits provider-required workflow glue outside `job`; this is not being reclassified or ignored to manufacture a completed checkbox. Independent critique also remains open.
