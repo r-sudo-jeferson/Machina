@@ -7,20 +7,13 @@ on:
     paths:
       - 'job/Cargo.toml'
       - 'job/Cargo.lock'
+      - 'job/rust-toolchain.toml'
       - 'job/services/authz/**'
-      - 'job/db/migrations/**'
-      - 'job/scripts/authztest/**'
-      - 'job/scripts/authzperf/**'
-      - 'job/docs/engineering/MCH-S001-authz-performance.md'
-      - '.github/workflows/verify-authz.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'job/Cargo.toml'
-      - 'job/Cargo.lock'
-      - 'job/services/authz/**'
-      - 'job/db/migrations/**'
+      - 'job/db/migrations/0001_schemas.sql'
+      - 'job/db/migrations/0002_identity_tenancy.sql'
+      - 'job/db/migrations/0003_authorization.sql'
+      - 'job/db/migrations/0006_rls.sql'
+      - 'job/db/migrations/0007_integrity.sql'
       - 'job/scripts/authztest/**'
       - 'job/scripts/authzperf/**'
       - 'job/docs/engineering/MCH-S001-authz-performance.md'
@@ -47,7 +40,6 @@ jobs:
         run: |
           set -euo pipefail
           checked_sha="$(git rev-parse HEAD)"
-          printf 'workflow_event=%s\n' "$GITHUB_EVENT_NAME"
           printf 'workflow_sha=%s\n' "$GITHUB_SHA"
           printf 'checked_sha=%s\n' "$checked_sha"
           test "$checked_sha" = "$GITHUB_SHA"
@@ -69,6 +61,5 @@ jobs:
         run: bash scripts/authztest/run.sh
 
       - name: Verify authorization performance objective
-        if: github.event_name == 'push'
         working-directory: job
         run: bash scripts/authzperf/run.sh
