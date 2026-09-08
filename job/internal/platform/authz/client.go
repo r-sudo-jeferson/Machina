@@ -60,7 +60,7 @@ func (c *Client) Authorize(ctx context.Context, request Request) (Decision, erro
 	if c == nil || c.transport == nil || c.timeout <= 0 {
 		return Decision{}, fmt.Errorf("%w: authorization client is not configured", ErrInvalidRequest)
 	}
-	if !validRequest(request) {
+	if !isValidRequest(request) {
 		return Decision{}, ErrInvalidRequest
 	}
 
@@ -98,7 +98,7 @@ func (c *Client) Authorize(ctx context.Context, request Request) (Decision, erro
 	}, nil
 }
 
-func validRequest(request Request) bool {
+func isValidRequest(request Request) bool {
 	return isCanonicalUUID(request.SubjectID) &&
 		isCanonicalUUID(request.TenantID) &&
 		isCanonicalUUID(request.WorkspaceID) &&
