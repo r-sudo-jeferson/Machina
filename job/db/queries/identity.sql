@@ -16,13 +16,13 @@ SELECT iam.create_session(
 
 -- name: GetActiveSession :one
 SELECT
-  active_session.id,
-  active_session.subject_id,
-  active_session.csrf_token_hash,
-  active_session.active_tenant_id,
-  active_session.active_workspace_id,
-  active_session.expires_at,
-  active_session.rotated_at
+  active_session.id::uuid AS id,
+  active_session.subject_id::uuid AS subject_id,
+  active_session.csrf_token_hash::bytea AS csrf_token_hash,
+  active_session.active_tenant_id::uuid AS active_tenant_id,
+  active_session.active_workspace_id::uuid AS active_workspace_id,
+  active_session.expires_at::timestamptz AS expires_at,
+  active_session.rotated_at::timestamptz AS rotated_at
 FROM iam.get_active_session(sqlc.arg(session_token_hash)::bytea) AS active_session(
   id,
   subject_id,
