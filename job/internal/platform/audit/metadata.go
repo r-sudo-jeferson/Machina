@@ -27,9 +27,9 @@ type SafeMetadata struct {
 }
 
 type tenantSwitchMetadataPayload struct {
-	SessionGeneration  int64  `json:"session_generation"`
-	TargetTenantID     string `json:"target_tenant_id"`
-	TargetWorkspaceID  string `json:"target_workspace_id"`
+	SessionGeneration int64  `json:"session_generation"`
+	TargetTenantID    string `json:"target_tenant_id"`
+	TargetWorkspaceID string `json:"target_workspace_id"`
 }
 
 type authorizationDecisionMetadataPayload struct {
