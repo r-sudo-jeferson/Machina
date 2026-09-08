@@ -136,7 +136,7 @@ impl AuthorizationService for AuthorizationServiceHandler {
 
 fn validate_message(message: &DecisionRequest) -> Result<(), Status> {
     if message.subject_id.is_empty()
-        || message.tenant_id.is_empty()
+        || !is_canonical_uuid(&message.tenant_id)
         || message.action.is_empty()
         || message.resource_type.is_empty()
         || message.resource_id.is_empty()
@@ -147,6 +147,18 @@ fn validate_message(message: &DecisionRequest) -> Result<(), Status> {
     }
 
     Ok(())
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+
+    bytes.iter().enumerate().all(|(index, byte)| match index {
+        8 | 13 | 18 | 23 => *byte == b'-',
+        _ => byte.is_ascii_hexdigit(),
+    })
 }
 
 fn cedar_request(message: &DecisionRequest) -> Result<Request, Status> {
