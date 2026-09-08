@@ -60,8 +60,7 @@ FROM iam.switch_session_context(
   sqlc.arg(current_session_token_hash)::bytea,
   sqlc.arg(replacement_session_token_hash)::bytea,
   sqlc.arg(replacement_csrf_token_hash)::bytea,
-  sqlc.arg(target_tenant_id)::uuid,
-  sqlc.arg(target_workspace_id)::uuid
+  sqlc.arg(target_tenant_id)::uuid
 ) AS switched_session(
   session_id,
   active_tenant_id,
