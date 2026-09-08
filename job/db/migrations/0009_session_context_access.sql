@@ -49,13 +49,16 @@ RETURNS TABLE (
     status text,
     starter_role text
 )
-LANGUAGE sql
-STABLE
+LANGUAGE plpgsql
+VOLATILE
 SECURITY DEFINER
 SET search_path = pg_catalog
 SET row_security = on
-SET app.session_context_lookup = 'on'
 AS $$
+BEGIN
+    PERFORM set_config('app.session_context_lookup', 'on', true);
+
+    RETURN QUERY
     SELECT
         tenant.id,
         tenant.slug,
@@ -73,7 +76,8 @@ AS $$
       AND session.session_token_hash = p_session_token_hash
       AND session.revoked_at IS NULL
       AND session.expires_at > now()
-    ORDER BY tenant.id
+    ORDER BY tenant.id;
+END;
 $$;
 
 REVOKE ALL ON FUNCTION iam.get_session_identity(bytea) FROM PUBLIC;
@@ -82,9 +86,9 @@ REVOKE ALL ON FUNCTION iam.list_session_tenants(bytea) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION iam.get_session_identity(bytea) TO machina_runtime;
 GRANT EXECUTE ON FUNCTION iam.list_session_tenants(bytea) TO machina_runtime;
 
-COMMENT ON POLICY session_context_migrator_read ON iam.memberships IS 'Allows only the migration-role security definer to read cross-tenant membership rows while the function-local session-context capability is active; runtime callers remain governed by tenant RLS.';
-COMMENT ON POLICY session_context_migrator_read ON iam.tenants IS 'Allows only the migration-role security definer to read cross-tenant tenant rows while the function-local session-context capability is active; runtime callers remain governed by tenant RLS.';
+COMMENT ON POLICY session_context_migrator_read ON iam.memberships IS 'Allows only the migration-role security definer to read cross-tenant membership rows while the transaction-local session-context capability is active; runtime callers remain governed by tenant RLS.';
+COMMENT ON POLICY session_context_migrator_read ON iam.tenants IS 'Allows only the migration-role security definer to read cross-tenant tenant rows while the transaction-local session-context capability is active; runtime callers remain governed by tenant RLS.';
 COMMENT ON FUNCTION iam.get_session_identity(bytea) IS 'Returns the minimal public identity projection for a currently active server-side session without exposing subjects or session rows directly.';
-COMMENT ON FUNCTION iam.list_session_tenants(bytea) IS 'Returns only active tenants and active memberships reachable from a currently active server-side session through a function-local cross-tenant read capability.';
+COMMENT ON FUNCTION iam.list_session_tenants(bytea) IS 'Returns only active tenants and active memberships reachable from a currently active server-side session through a transaction-local cross-tenant read capability.';
 
 COMMIT;
