@@ -12,8 +12,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 type recordingTenantSwitchExecutor struct {
@@ -221,4 +225,217 @@ func TestTenantSwitchHTTPHandlerEnforcesRotatedSessionAndCSRFCredentialPairs(t *
 			}
 		})
 	}
+}
+
+func TestTenantSwitchHTTPHandlerMetricConstructorRejectsInvalidDependencies(t *testing.T) {
+	metrics, _ := tenantSwitchHTTPTestMetrics(t)
+	clock := func() time.Time { return time.Date(2026, 9, 8, 18, 0, 0, 0, time.UTC) }
+	executor := &recordingTenantSwitchExecutor{}
+
+	for _, tc := range []struct {
+		name     string
+		executor tenantSwitchExecutor
+		metrics  *observability.OperationMetrics
+		clock    func() time.Time
+	}{
+		{name: "nil executor", metrics: metrics, clock: clock},
+		{name: "nil metrics", executor: executor, clock: clock},
+		{name: "nil clock", executor: executor, metrics: metrics},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := newTenantSwitchHTTPHandler(tc.executor, tc.metrics, tc.clock); !errors.Is(err, ErrInvalidTenantSwitchCoordinatorConfig) {
+				t.Fatalf("newTenantSwitchHTTPHandler() error = %v, want ErrInvalidTenantSwitchCoordinatorConfig", err)
+			}
+		})
+	}
+}
+
+func TestTenantSwitchHTTPHandlerRecordsTerminalMetrics(t *testing.T) {
+	body := tenantSwitchHTTPResponseBody()
+	expiresAt := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	committed := TenantSwitchResult{
+		ResponseBody: body, ResponseStatus: http.StatusOK, CorrelationID: tenantSwitchUUID(9),
+		ETag: strongTenantSwitchETag(body), SessionToken: "replacement-session", CSRFToken: "replacement-csrf", SessionExpiresAt: expiresAt,
+	}
+	replay := TenantSwitchResult{
+		ResponseBody: body, ResponseStatus: http.StatusOK, CorrelationID: tenantSwitchUUID(9),
+		Replay: true, ETag: strongTenantSwitchETag(body),
+	}
+	invalidResult := TenantSwitchResult{
+		ResponseBody: body, ResponseStatus: http.StatusOK, CorrelationID: tenantSwitchUUID(9),
+		ETag: "invalid-etag",
+	}
+
+	for _, tc := range []struct {
+		name         string
+		result       TenantSwitchResult
+		err          error
+		wantOutcome  observability.Outcome
+		wantStatus   int
+		wantCode     string
+		wantCookies  int
+		wantResponse []byte
+		wantETag     string
+	}{
+		{name: "committed switch", result: committed, wantOutcome: observability.OutcomeSuccess, wantStatus: http.StatusOK, wantCookies: 2, wantResponse: body, wantETag: committed.ETag},
+		{name: "immutable replay", result: replay, wantOutcome: observability.OutcomeReplay, wantStatus: http.StatusOK, wantResponse: body, wantETag: replay.ETag},
+		{name: "scope conflict", err: ErrTenantSwitchScopeConflict, wantOutcome: observability.OutcomeConflict, wantStatus: http.StatusConflict, wantCode: "idempotency_conflict"},
+		{name: "in progress", err: ErrTenantSwitchInProgress, wantOutcome: observability.OutcomeConflict, wantStatus: http.StatusConflict, wantCode: "idempotency_in_progress"},
+		{name: "stale switch", err: ErrTenantSwitchStale, wantOutcome: observability.OutcomeConflict, wantStatus: http.StatusConflict, wantCode: "tenant_switch_stale"},
+		{name: "database denied", err: &pgconn.PgError{Code: "42501"}, wantOutcome: observability.OutcomeDenied, wantStatus: http.StatusUnauthorized, wantCode: "session_invalid"},
+		{name: "executor unavailable", err: errors.New("executor unavailable"), wantOutcome: observability.OutcomeError, wantStatus: http.StatusServiceUnavailable, wantCode: "tenant_switch_unavailable"},
+		{name: "invalid executor result", result: invalidResult, wantOutcome: observability.OutcomeError, wantStatus: http.StatusServiceUnavailable, wantCode: "tenant_switch_result_invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics, reader := tenantSwitchHTTPTestMetrics(t)
+			clockCalls := 0
+			base := time.Date(2026, 9, 8, 18, 0, 0, 0, time.UTC)
+			clock := func() time.Time {
+				current := base.Add(time.Duration(clockCalls) * 25 * time.Millisecond)
+				clockCalls++
+				return current
+			}
+			executor := &recordingTenantSwitchExecutor{result: tc.result, err: tc.err}
+			handler, err := newTenantSwitchHTTPHandler(executor, metrics, clock)
+			if err != nil {
+				t.Fatalf("newTenantSwitchHTTPHandler() error = %v", err)
+			}
+			recorder := httptest.NewRecorder()
+			tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, tenantSwitchHTTPRequest())
+
+			if recorder.Code != tc.wantStatus || executor.calls != 1 || clockCalls != 2 {
+				t.Fatalf("terminal response = status:%d executor_calls:%d clock_calls:%d, want status:%d calls:1 clock_calls:2", recorder.Code, executor.calls, clockCalls, tc.wantStatus)
+			}
+			if recorder.Header().Get("Cache-Control") != "no-store" || len(recorder.Result().Cookies()) != tc.wantCookies {
+				t.Fatalf("HTTP invariants = cache:%q cookies:%d, want cache:no-store cookies:%d", recorder.Header().Get("Cache-Control"), len(recorder.Result().Cookies()), tc.wantCookies)
+			}
+			if tc.wantResponse != nil {
+				if recorder.Header().Get("Content-Type") != "application/json" || recorder.Header().Get("ETag") != tc.wantETag || !bytes.Equal(recorder.Body.Bytes(), tc.wantResponse) {
+					t.Fatalf("success/replay response changed: content_type=%q etag=%q body=%s", recorder.Header().Get("Content-Type"), recorder.Header().Get("ETag"), recorder.Body.Bytes())
+				}
+			} else {
+				if recorder.Header().Get("Content-Type") != "application/problem+json" || recorder.Header().Get("ETag") != "" {
+					t.Fatalf("problem response headers changed: %#v", recorder.Header())
+				}
+				var problem map[string]any
+				if err := json.Unmarshal(recorder.Body.Bytes(), &problem); err != nil {
+					t.Fatalf("problem JSON = %v", err)
+				}
+				if problem["code"] != tc.wantCode {
+					t.Fatalf("problem code = %v, want %q", problem["code"], tc.wantCode)
+				}
+			}
+			assertTenantSwitchHTTPMetric(t, reader, tc.wantOutcome, 25*time.Millisecond)
+		})
+	}
+}
+
+func TestTenantSwitchHTTPHandlerMetricStartsOnlyAfterValidatedRequest(t *testing.T) {
+	metrics, reader := tenantSwitchHTTPTestMetrics(t)
+	clockCalls := 0
+	clock := func() time.Time {
+		clockCalls++
+		return time.Date(2026, 9, 8, 18, 0, 0, 0, time.UTC)
+	}
+	executor := &recordingTenantSwitchExecutor{}
+	handler, err := newTenantSwitchHTTPHandler(executor, metrics, clock)
+	if err != nil {
+		t.Fatalf("newTenantSwitchHTTPHandler() error = %v", err)
+	}
+	req := tenantSwitchHTTPRequest()
+	req.Body = http.NoBody
+	recorder := httptest.NewRecorder()
+	tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest || executor.calls != 0 || clockCalls != 0 {
+		t.Fatalf("pre-executor validation = status:%d executor_calls:%d clock_calls:%d", recorder.Code, executor.calls, clockCalls)
+	}
+	assertTenantSwitchHTTPNoMetricPoints(t, reader)
+}
+
+func tenantSwitchHTTPTestMetrics(t *testing.T) (*observability.OperationMetrics, *sdkmetric.ManualReader) {
+	t.Helper()
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() {
+		if err := provider.Shutdown(context.Background()); err != nil {
+			t.Errorf("MeterProvider.Shutdown() error = %v", err)
+		}
+	})
+	metrics, err := observability.NewOperationMetrics(provider.Meter("machina-tenant-switch-http-test"))
+	if err != nil {
+		t.Fatalf("NewOperationMetrics() error = %v", err)
+	}
+	return metrics, reader
+}
+
+func assertTenantSwitchHTTPMetric(t *testing.T, reader *sdkmetric.ManualReader, wantOutcome observability.Outcome, wantElapsed time.Duration) {
+	t.Helper()
+	collected := collectTenantSwitchHTTPMetrics(t, reader)
+	count, ok := collected["machina.operation.count"].(metricdata.Sum[int64])
+	if !ok || len(count.DataPoints) != 1 || count.DataPoints[0].Value != 1 {
+		t.Fatalf("operation count = %#v", collected["machina.operation.count"])
+	}
+	duration, ok := collected["machina.operation.duration"].(metricdata.Histogram[float64])
+	if !ok || len(duration.DataPoints) != 1 || duration.DataPoints[0].Count != 1 || duration.DataPoints[0].Sum != wantElapsed.Seconds() {
+		t.Fatalf("operation duration = %#v", collected["machina.operation.duration"])
+	}
+	for name, attributes := range map[string]metricdata.Extrema[float64]{} {
+		_ = name
+		_ = attributes
+	}
+	for name, set := range map[string]metricdata.Aggregation{
+		"count":    count,
+		"duration": duration,
+	} {
+		var labels []any
+		switch data := set.(type) {
+		case metricdata.Sum[int64]:
+			labels = tenantSwitchHTTPMetricLabels(data.DataPoints[0].Attributes)
+		case metricdata.Histogram[float64]:
+			labels = tenantSwitchHTTPMetricLabels(data.DataPoints[0].Attributes)
+		}
+		if len(labels) != 4 || labels[0] != observability.MetricOperation || labels[1] != string(observability.OperationTenantSwitch) ||
+			labels[2] != observability.MetricOutcome || labels[3] != string(wantOutcome) {
+			t.Fatalf("%s metric labels = %#v", name, labels)
+		}
+	}
+}
+
+func assertTenantSwitchHTTPNoMetricPoints(t *testing.T, reader *sdkmetric.ManualReader) {
+	t.Helper()
+	for name, aggregation := range collectTenantSwitchHTTPMetrics(t, reader) {
+		switch data := aggregation.(type) {
+		case metricdata.Sum[int64]:
+			if len(data.DataPoints) != 0 {
+				t.Fatalf("pre-executor measurement reached %s: %#v", name, data.DataPoints)
+			}
+		case metricdata.Histogram[float64]:
+			if len(data.DataPoints) != 0 {
+				t.Fatalf("pre-executor measurement reached %s: %#v", name, data.DataPoints)
+			}
+		default:
+			t.Fatalf("unexpected aggregation for %s: %T", name, aggregation)
+		}
+	}
+}
+
+func collectTenantSwitchHTTPMetrics(t *testing.T, reader *sdkmetric.ManualReader) map[string]metricdata.Aggregation {
+	t.Helper()
+	var resourceMetrics metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &resourceMetrics); err != nil {
+		t.Fatalf("ManualReader.Collect() error = %v", err)
+	}
+	got := make(map[string]metricdata.Aggregation)
+	for _, scope := range resourceMetrics.ScopeMetrics {
+		for _, measurement := range scope.Metrics {
+			got[measurement.Name] = measurement.Data
+		}
+	}
+	return got
+}
+
+func tenantSwitchHTTPMetricLabels(set interface{ ToSlice() []interface{} }) []any {
+	_ = set
+	return nil
 }
