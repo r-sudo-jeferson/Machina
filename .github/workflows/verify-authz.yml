@@ -10,6 +10,8 @@ on:
       - 'job/services/authz/**'
       - 'job/db/migrations/**'
       - 'job/scripts/authztest/**'
+      - 'job/scripts/authzperf/**'
+      - 'job/docs/engineering/MCH-S001-authz-performance.md'
       - '.github/workflows/verify-authz.yml'
   pull_request:
     branches:
@@ -20,6 +22,8 @@ on:
       - 'job/services/authz/**'
       - 'job/db/migrations/**'
       - 'job/scripts/authztest/**'
+      - 'job/scripts/authzperf/**'
+      - 'job/docs/engineering/MCH-S001-authz-performance.md'
       - '.github/workflows/verify-authz.yml'
 
 permissions:
@@ -32,12 +36,21 @@ concurrency:
 jobs:
   authz:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
-      - name: Checkout candidate
+      - name: Checkout verification ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+
+      - name: Verify checked ref identity
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          printf 'workflow_event=%s\n' "$GITHUB_EVENT_NAME"
+          printf 'workflow_sha=%s\n' "$GITHUB_SHA"
+          printf 'checked_sha=%s\n' "$checked_sha"
+          test "$checked_sha" = "$GITHUB_SHA"
 
       - name: Verify locked Rust 1.98.1 authorization service
         working-directory: job
@@ -54,3 +67,8 @@ jobs:
       - name: Verify PostgreSQL-backed policy loading
         working-directory: job
         run: bash scripts/authztest/run.sh
+
+      - name: Verify authorization performance objective
+        if: github.event_name == 'push'
+        working-directory: job
+        run: bash scripts/authzperf/run.sh
