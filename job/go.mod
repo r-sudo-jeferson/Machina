@@ -4,9 +4,11 @@ go 1.27.1
 
 require (
 	github.com/bufbuild/protocompile v0.14.1
+	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	golang.org/x/oauth2 v0.36.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )
