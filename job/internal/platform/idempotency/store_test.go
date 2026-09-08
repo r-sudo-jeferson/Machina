@@ -162,7 +162,9 @@ func TestStoreRejectsInvalidClaimInputBeforeDatabase(t *testing.T) {
 		{name: "empty operation", mutate: func(r *ClaimRequest) { r.Operation = "" }},
 		{name: "long operation", mutate: func(r *ClaimRequest) { r.Operation = string(make([]byte, 161)) }},
 		{name: "short hash", mutate: func(r *ClaimRequest) { r.RequestHash = "abc" }},
-		{name: "uppercase hash", mutate: func(r *ClaimRequest) { r.RequestHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }},
+		{name: "uppercase hash", mutate: func(r *ClaimRequest) {
+			r.RequestHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+		}},
 		{name: "invalid correlation", mutate: func(r *ClaimRequest) { r.CorrelationID = pgtype.UUID{} }},
 		{name: "missing expiry", mutate: func(r *ClaimRequest) { r.ExpiresAt = time.Time{} }},
 	}
