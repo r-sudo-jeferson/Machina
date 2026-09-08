@@ -21,6 +21,13 @@ type recordingTenantSwitchUnit struct {
 	claimRow       sqlcgen.ClaimIdempotencyKeyRow
 	claimErr       error
 	completeErr    error
+	responseETag   string
+	etagErr        error
+	auditErr       error
+	outboxErr      error
+	auditCalls     int
+	outboxCalls    int
+	etagCalls      int
 	switchRow      sqlcgen.SwitchSessionContextRow
 	switchErr      error
 	bindParams     sqlcgen.BindTenantSwitchIdempotencyParams
@@ -78,6 +85,53 @@ func (u *recordingTenantSwitchUnit) CompleteIdempotencyKey(_ context.Context, ar
 	return true, nil
 }
 
+func (u *recordingTenantSwitchUnit) GetSessionIdentity(_ context.Context, _ []byte) (sqlcgen.GetSessionIdentityRow, error) {
+	return sqlcgen.GetSessionIdentityRow{ID: tenantSwitchUUID(2), DisplayName: "Subject A"}, nil
+}
+
+func (u *recordingTenantSwitchUnit) ListSessionTenants(_ context.Context, _ []byte) ([]sqlcgen.ListSessionTenantsRow, error) {
+	return []sqlcgen.ListSessionTenantsRow{{TenantID: tenantSwitchUUID(2), Slug: "tenant-b", DisplayName: "Tenant B", Status: "active", StarterRole: "owner"}}, nil
+}
+
+func (u *recordingTenantSwitchUnit) GetTenant(_ context.Context, tenantID pgtype.UUID) (sqlcgen.IamTenant, error) {
+	return sqlcgen.IamTenant{ID: tenantID, Slug: "tenant-b", DisplayName: "Tenant B", Status: "active"}, nil
+}
+
+func (u *recordingTenantSwitchUnit) GetWorkspace(_ context.Context, arg sqlcgen.GetWorkspaceParams) (sqlcgen.IamWorkspace, error) {
+	return sqlcgen.IamWorkspace{TenantID: arg.TenantID, ID: arg.WorkspaceID, Slug: "main", DisplayName: "Main"}, nil
+}
+
+func (u *recordingTenantSwitchUnit) GetActivePolicySnapshot(_ context.Context, _ pgtype.UUID) (sqlcgen.GetActivePolicySnapshotRow, error) {
+	return sqlcgen.GetActivePolicySnapshotRow{Version: 1, SnapshotHash: strings.Repeat("a", 64)}, nil
+}
+
+func (u *recordingTenantSwitchUnit) SetTenantSwitchResponseETag(_ context.Context, arg sqlcgen.SetTenantSwitchResponseETagParams) (bool, error) {
+	u.etagCalls++
+	if u.etagErr != nil {
+		return false, u.etagErr
+	}
+	u.responseETag = arg.ResponseETag
+	return true, nil
+}
+
+func (u *recordingTenantSwitchUnit) GetTenantSwitchResponseETag(_ context.Context, _ sqlcgen.GetTenantSwitchResponseETagParams) (pgtype.Text, error) {
+	u.etagCalls++
+	if u.responseETag == "" {
+		return pgtype.Text{}, nil
+	}
+	return pgtype.Text{String: u.responseETag, Valid: true}, nil
+}
+
+func (u *recordingTenantSwitchUnit) InsertAuditEvent(_ context.Context, _ sqlcgen.InsertAuditEventParams) error {
+	u.auditCalls++
+	return u.auditErr
+}
+
+func (u *recordingTenantSwitchUnit) EnqueueOutboxEvent(_ context.Context, _ sqlcgen.EnqueueOutboxEventParams) error {
+	u.outboxCalls++
+	return u.outboxErr
+}
+
 func (u *recordingTenantSwitchUnit) SwitchSessionContext(_ context.Context, arg sqlcgen.SwitchSessionContextParams) (sqlcgen.SwitchSessionContextRow, error) {
 	u.switchCalls++
 	u.switchParams = arg
@@ -123,11 +177,16 @@ func validTenantSwitchSwitchRow() sqlcgen.SwitchSessionContextRow {
 
 func claimedTenantSwitchUnit() *recordingTenantSwitchUnit {
 	row := validTenantSwitchBindRow()
+	_, canonical, err := unmarshalTenantSwitchResponse(tenantSwitchHTTPResponseBody())
+	if err != nil {
+		panic(err)
+	}
 	return &recordingTenantSwitchUnit{
-		bindRow:   row,
-		claimRow:  sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", CorrelationID: validTenantSwitchRequest().CorrelationID},
-		finishRow: sqlcgen.FinishTenantSwitchIdempotencyRow{Finished: true, SessionID: row.SessionID, ResultGeneration: row.Generation + 1},
-		switchRow: validTenantSwitchSwitchRow(),
+		bindRow:       row,
+		claimRow:      sqlcgen.ClaimIdempotencyKeyRow{ClaimState: "claimed", CorrelationID: validTenantSwitchRequest().CorrelationID},
+		finishRow:     sqlcgen.FinishTenantSwitchIdempotencyRow{Finished: true, SessionID: row.SessionID, ResultGeneration: row.Generation + 1},
+		switchRow:     validTenantSwitchSwitchRow(),
+		responseETag:  strongTenantSwitchETag(canonical),
 	}
 }
 
@@ -191,7 +250,7 @@ func TestTenantSwitchCoordinatorReplayDoesNotGenerateOrRotate(t *testing.T) {
 	unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
 		ClaimState:     "replay",
 		ResponseStatus: 200,
-		ResponseBody:   []byte(`{"active_tenant_id":"00000000-0000-0000-0000-000000000002","active_workspace_id":"00000000-0000-0000-0000-000000000004","session_generation":8,"session_expires_at":"2026-09-09T12:00:00Z"}`),
+		ResponseBody:   tenantSwitchHTTPResponseBody(),
 		CorrelationID:  validTenantSwitchRequest().CorrelationID,
 	}
 	coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
@@ -310,7 +369,7 @@ func TestTenantSwitchCoordinatorRejectsInvalidScopeAndMalformedReplayOutcome(t *
 		unit.claimRow = sqlcgen.ClaimIdempotencyKeyRow{
 			ClaimState:     "replay",
 			ResponseStatus: 200,
-			ResponseBody:   []byte(`{"active_tenant_id":"not-a-uuid"}`),
+			ResponseBody:   []byte(`{"identity":{"id":"not-a-uuid"}}`),
 			CorrelationID:  validTenantSwitchRequest().CorrelationID,
 		}
 		coordinator := newRecordingTenantSwitchCoordinator(unit, nil)
