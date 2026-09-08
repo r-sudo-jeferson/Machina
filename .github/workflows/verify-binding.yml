@@ -48,6 +48,17 @@ jobs:
         working-directory: job
         run: go mod tidy -diff
 
+      - name: Verify Go formatting and static analysis
+        working-directory: job
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'unformatted Go files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+          go vet ./...
+
       - name: Verify Go and repository contracts
         working-directory: job
         run: |
