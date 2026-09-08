@@ -10,9 +10,9 @@ func TestVerifyRepositoryRejectsPythonSourceArtifacts(t *testing.T) {
 
 	root := t.TempDir()
 	writeRepoFiles(t, root, map[string]string{
-		"AGENTS.md":              "contract\n",
-		"README.md":              "Machina\n",
-		"job/tools/migrate.py":   "print('forbidden')\n",
+		"AGENTS.md":            "contract\n",
+		"README.md":            "Machina\n",
+		"job/tools/migrate.py": "print('forbidden')\n",
 	})
 
 	err := VerifyRepository(root)
@@ -29,9 +29,9 @@ func TestVerifyRepositoryRejectsPythonShebang(t *testing.T) {
 
 	root := t.TempDir()
 	writeRepoFiles(t, root, map[string]string{
-		"AGENTS.md":            "contract\n",
-		"README.md":            "Machina\n",
-		"job/scripts/check":     "#!/usr/bin/env python3\nprint('forbidden')\n",
+		"AGENTS.md":         "contract\n",
+		"README.md":         "Machina\n",
+		"job/scripts/check": "#!/usr/bin/env python3\nprint('forbidden')\n",
 	})
 
 	err := VerifyRepository(root)
@@ -78,8 +78,8 @@ func TestVerifyRepositoryRejectsPythonBaseImage(t *testing.T) {
 
 	root := t.TempDir()
 	writeRepoFiles(t, root, map[string]string{
-		"AGENTS.md":                    "contract\n",
-		"README.md":                    "Machina\n",
+		"AGENTS.md":                        "contract\n",
+		"README.md":                        "Machina\n",
 		"job/deploy/containers/Dockerfile": "FROM python:3.13-alpine\n",
 	})
 
@@ -97,9 +97,9 @@ func TestVerifyRepositoryAllowsDocumentationThatMentionsPythonProhibition(t *tes
 
 	root := t.TempDir()
 	writeRepoFiles(t, root, map[string]string{
-		"AGENTS.md":                       "contract\n",
-		"README.md":                       "Machina\n",
-		"job/docs/engineering/policy.md":   "Python is prohibited in repository-owned tooling.\n",
+		"AGENTS.md":                      "contract\n",
+		"README.md":                      "Machina\n",
+		"job/docs/engineering/policy.md": "Python is prohibited in repository-owned tooling.\n",
 	})
 
 	if err := VerifyRepository(root); err != nil {
