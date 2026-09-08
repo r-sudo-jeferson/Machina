@@ -11,8 +11,6 @@ import (
 )
 
 type Querier interface {
-	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
-	EnqueueOutboxEvent(ctx context.Context, arg EnqueueOutboxEventParams) error
 	BindTenantSwitchIdempotency(ctx context.Context, arg BindTenantSwitchIdempotencyParams) (BindTenantSwitchIdempotencyRow, error)
 	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (ClaimIdempotencyKeyRow, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) (bool, error)
@@ -22,20 +20,22 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (pgtype.UUID, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (IamTenant, error)
 	CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (IamWorkspace, error)
+	EnqueueOutboxEvent(ctx context.Context, arg EnqueueOutboxEventParams) error
 	FinishTenantSwitchIdempotency(ctx context.Context, arg FinishTenantSwitchIdempotencyParams) (FinishTenantSwitchIdempotencyRow, error)
 	GetActivePolicySnapshot(ctx context.Context, tenantID pgtype.UUID) (GetActivePolicySnapshotRow, error)
 	GetActiveSession(ctx context.Context, sessionTokenHash []byte) (GetActiveSessionRow, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (IamMembership, error)
 	GetPreference(ctx context.Context, arg GetPreferenceParams) (IamPreference, error)
-	GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (pgtype.Text, error)
 	GetSessionIdentity(ctx context.Context, sessionTokenHash []byte) (GetSessionIdentityRow, error)
 	GetTenant(ctx context.Context, tenantID pgtype.UUID) (IamTenant, error)
+	GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (string, error)
 	GetWorkspace(ctx context.Context, arg GetWorkspaceParams) (IamWorkspace, error)
+	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
 	ListSessionTenants(ctx context.Context, sessionTokenHash []byte) ([]ListSessionTenantsRow, error)
 	ListWorkspaces(ctx context.Context, tenantID pgtype.UUID) ([]IamWorkspace, error)
-	SetTenantSwitchResponseETag(ctx context.Context, arg SetTenantSwitchResponseETagParams) (bool, error)
 	RevokeSession(ctx context.Context, sessionTokenHash []byte) error
 	RotateSession(ctx context.Context, arg RotateSessionParams) (RotateSessionRow, error)
+	SetTenantSwitchResponseETag(ctx context.Context, arg SetTenantSwitchResponseETagParams) (bool, error)
 	SwitchSessionContext(ctx context.Context, arg SwitchSessionContextParams) (SwitchSessionContextRow, error)
 	UpsertPreference(ctx context.Context, arg UpsertPreferenceParams) (IamPreference, error)
 	UpsertSubject(ctx context.Context, arg UpsertSubjectParams) (pgtype.UUID, error)
