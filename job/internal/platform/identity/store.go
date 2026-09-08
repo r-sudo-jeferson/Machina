@@ -13,6 +13,7 @@ var (
 	ErrMissingSessionToken = errors.New("missing session token")
 	ErrMissingCSRFToken    = errors.New("missing CSRF token")
 	ErrSessionTokenReuse   = errors.New("session rotation requires a new session token")
+	ErrInvalidTargetContext = errors.New("invalid target tenant or workspace")
 )
 
 type sessionQueries interface {
@@ -20,6 +21,7 @@ type sessionQueries interface {
 	GetActiveSession(context.Context, []byte) (sqlcgen.GetActiveSessionRow, error)
 	RevokeSession(context.Context, []byte) error
 	RotateSession(context.Context, sqlcgen.RotateSessionParams) (sqlcgen.RotateSessionRow, error)
+	SwitchSessionContext(context.Context, sqlcgen.SwitchSessionContextParams) (sqlcgen.SwitchSessionContextRow, error)
 }
 
 type SessionStore struct {
@@ -104,5 +106,41 @@ func (s *SessionStore) Rotate(
 		SessionTokenHash:    presentedHash[:],
 		NewSessionTokenHash: replacementHash[:],
 		NewCsrfTokenHash:    replacementCSRFHash[:],
+	})
+}
+
+func (s *SessionStore) SwitchContext(
+	ctx context.Context,
+	presentedSessionToken string,
+	replacementSessionToken string,
+	replacementCSRFToken string,
+	targetTenantID pgtype.UUID,
+	targetWorkspaceID pgtype.UUID,
+) (sqlcgen.SwitchSessionContextRow, error) {
+	if presentedSessionToken == "" || replacementSessionToken == "" {
+		return sqlcgen.SwitchSessionContextRow{}, ErrMissingSessionToken
+	}
+	if replacementCSRFToken == "" {
+		return sqlcgen.SwitchSessionContextRow{}, ErrMissingCSRFToken
+	}
+	if presentedSessionToken == replacementSessionToken {
+		return sqlcgen.SwitchSessionContextRow{}, ErrSessionTokenReuse
+	}
+	if replacementSessionToken == replacementCSRFToken {
+		return sqlcgen.SwitchSessionContextRow{}, ErrSessionSecretCollision
+	}
+	if !targetTenantID.Valid || !targetWorkspaceID.Valid {
+		return sqlcgen.SwitchSessionContextRow{}, ErrInvalidTargetContext
+	}
+
+	currentHash := HashToken(presentedSessionToken)
+	replacementHash := HashToken(replacementSessionToken)
+	replacementCSRFHash := HashToken(replacementCSRFToken)
+	return s.queries.SwitchSessionContext(ctx, sqlcgen.SwitchSessionContextParams{
+		CurrentSessionTokenHash:     currentHash[:],
+		ReplacementSessionTokenHash: replacementHash[:],
+		ReplacementCsrfTokenHash:    replacementCSRFHash[:],
+		TargetTenantID:              targetTenantID,
+		TargetWorkspaceID:           targetWorkspaceID,
 	})
 }
