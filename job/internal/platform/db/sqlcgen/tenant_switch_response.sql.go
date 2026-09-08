@@ -7,6 +7,8 @@ package sqlcgen
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getTenantSwitchResponseETag = `-- name: GetTenantSwitchResponseETag :one
@@ -21,9 +23,9 @@ type GetTenantSwitchResponseETagParams struct {
 	RequestHash    string
 }
 
-func (q *Queries) GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (string, error) {
+func (q *Queries) GetTenantSwitchResponseETag(ctx context.Context, arg GetTenantSwitchResponseETagParams) (pgtype.Text, error) {
 	row := q.db.QueryRow(ctx, getTenantSwitchResponseETag, arg.IdempotencyKey, arg.RequestHash)
-	var i string
+	var i pgtype.Text
 	err := row.Scan(&i)
 	return i, err
 }
