@@ -1,4 +1,3 @@
-609 job/db/migrations/0015_tenant_switch_idempotency_scope.sql
 BEGIN;
 
 CREATE TABLE iam.tenant_switch_idempotency_scopes (
