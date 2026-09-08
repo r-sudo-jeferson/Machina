@@ -11,6 +11,49 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const enqueueOutboxEvent = `-- name: EnqueueOutboxEvent :exec
+INSERT INTO ops.outbox (
+  tenant_id,
+  id,
+  event_type,
+  event_version,
+  correlation_id,
+  payload,
+  occurred_at
+) VALUES (
+  $1::uuid,
+  $2::uuid,
+  $3::text,
+  $4::int,
+  $5::uuid,
+  $6::jsonb,
+  $7::timestamptz
+)
+`
+
+type EnqueueOutboxEventParams struct {
+	TenantID      pgtype.UUID
+	EventID       pgtype.UUID
+	EventType     string
+	EventVersion  int32
+	CorrelationID pgtype.UUID
+	Payload       []byte
+	OccurredAt    pgtype.Timestamptz
+}
+
+func (q *Queries) EnqueueOutboxEvent(ctx context.Context, arg EnqueueOutboxEventParams) error {
+	_, err := q.db.Exec(ctx, enqueueOutboxEvent,
+		arg.TenantID,
+		arg.EventID,
+		arg.EventType,
+		arg.EventVersion,
+		arg.CorrelationID,
+		arg.Payload,
+		arg.OccurredAt,
+	)
+	return err
+}
+
 const insertAuditEvent = `-- name: InsertAuditEvent :exec
 INSERT INTO audit.events (
   tenant_id,
@@ -43,7 +86,7 @@ INSERT INTO audit.events (
 
 type InsertAuditEventParams struct {
 	TenantID       pgtype.UUID
-	ID             pgtype.UUID
+	EventID        pgtype.UUID
 	ActorSubjectID pgtype.UUID
 	EventType      string
 	Action         string
@@ -59,7 +102,7 @@ type InsertAuditEventParams struct {
 func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error {
 	_, err := q.db.Exec(ctx, insertAuditEvent,
 		arg.TenantID,
-		arg.ID,
+		arg.EventID,
 		arg.ActorSubjectID,
 		arg.EventType,
 		arg.Action,
@@ -69,49 +112,6 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 		arg.SafeMetadata,
 		arg.PreviousHash,
 		arg.EventHash,
-		arg.OccurredAt,
-	)
-	return err
-}
-
-const enqueueOutboxEvent = `-- name: EnqueueOutboxEvent :exec
-INSERT INTO ops.outbox (
-  tenant_id,
-  id,
-  event_type,
-  event_version,
-  correlation_id,
-  payload,
-  occurred_at
-) VALUES (
-  $1::uuid,
-  $2::uuid,
-  $3::text,
-  $4::int,
-  $5::uuid,
-  $6::jsonb,
-  $7::timestamptz
-)
-`
-
-type EnqueueOutboxEventParams struct {
-	TenantID      pgtype.UUID
-	ID            pgtype.UUID
-	EventType     string
-	EventVersion  int32
-	CorrelationID pgtype.UUID
-	Payload       []byte
-	OccurredAt    pgtype.Timestamptz
-}
-
-func (q *Queries) EnqueueOutboxEvent(ctx context.Context, arg EnqueueOutboxEventParams) error {
-	_, err := q.db.Exec(ctx, enqueueOutboxEvent,
-		arg.TenantID,
-		arg.ID,
-		arg.EventType,
-		arg.EventVersion,
-		arg.CorrelationID,
-		arg.Payload,
 		arg.OccurredAt,
 	)
 	return err
