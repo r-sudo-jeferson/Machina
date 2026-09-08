@@ -65,3 +65,7 @@ jobs:
           set -euo pipefail
           go test -count=1 ./scripts/verify/...
           go test -count=1 ./...
+
+      - name: Verify race safety for metric wiring
+        working-directory: job
+        run: go test -race -count=1 ./internal/platform/observability ./internal/platform/identity
