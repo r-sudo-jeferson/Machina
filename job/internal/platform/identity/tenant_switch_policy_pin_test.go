@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -84,7 +85,7 @@ func TestTenantSwitchCoordinatorRejectsAuthorizationSnapshotHashMismatch(t *test
 	if !errors.Is(err, ErrTenantSwitchAuthorizationUnavailable) {
 		t.Fatalf("Switch() error = %v, want ErrTenantSwitchAuthorizationUnavailable", err)
 	}
-	if result != (TenantSwitchResult{}) {
+	if !reflect.DeepEqual(result, TenantSwitchResult{}) {
 		t.Fatalf("snapshot mismatch returned result = %#v", result)
 	}
 	if unit.claimCalls != 0 || unit.switchCalls != 0 || unit.auditCalls != 0 || unit.outboxCalls != 0 {
