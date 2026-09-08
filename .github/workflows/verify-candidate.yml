@@ -1,0 +1,92 @@
+name: Verify frozen candidate
+
+on:
+  push:
+    branches:
+      - candidate/mch-s001-1.0.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify checked candidate identity
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          printf 'candidate_sha=%s\n' "$GITHUB_SHA"
+          printf 'checked_sha=%s\n' "$checked_sha"
+          test "$checked_sha" = "$GITHUB_SHA"
+
+      - name: Setup Go 1.27.1
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.1'
+          cache: false
+
+      - name: Verify complete Go and repository contract surface
+        working-directory: job
+        run: |
+          set -euo pipefail
+          go mod tidy -diff
+          go test -count=1 ./scripts/verify/...
+          go test -count=1 ./...
+
+      - name: Verify PostgreSQL 18.6 tenancy and identity kernel
+        working-directory: job
+        run: bash scripts/dbtest/run.sh
+
+      - name: Verify sqlc data-access contract
+        working-directory: job
+        run: bash scripts/sqltest/run.sh
+
+      - name: Setup Node 24.20.0 LTS
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.20.0'
+          cache: ''
+
+      - name: Verify complete pnpm workspace
+        working-directory: job
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@12.3.4 --activate
+          test "$(node --version)" = "v24.20.0"
+          test "$(pnpm --version)" = "12.3.4"
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm test
+          pnpm typecheck
+          pnpm lint
+
+      - name: Verify locked Rust 1.98.1 authorization workspace
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --component clippy --component rustfmt
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
+          cargo +1.98.1 fmt --all --check
+          cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
+          cargo +1.98.1 test --locked --workspace --all-targets
+
+      - name: Verify PostgreSQL-backed authorization loading
+        working-directory: job
+        run: bash scripts/authztest/run.sh
+
+      - name: Verify authorization performance objective
+        working-directory: job
+        run: bash scripts/authzperf/run.sh
