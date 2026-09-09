@@ -33,7 +33,9 @@
     },
     "keycloak": {
       "version": "26.7.3",
-      "source": "keycloak.org"
+      "source": "keycloak.org",
+      "image": "quay.io/keycloak/keycloak",
+      "imageDigest": "sha256:ff4257d0d64efbe99ed1ddfaf07765cc3c36dc7518bf8324d41961327f441c54"
     },
     "pgx": {
       "version": "5.10.0",
