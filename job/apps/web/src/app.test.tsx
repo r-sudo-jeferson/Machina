@@ -191,4 +191,27 @@ describe('Machina entry journey', () => {
     ]);
     expect(keySequence).toBe(1);
   });
+
+  it('recovers from a transient session bootstrap failure through an explicit retry action', async () => {
+    let attempts = 0;
+    const gateway: EntryGateway = {
+      loadSession: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('Temporary session failure.');
+        }
+        return readySession;
+      },
+    };
+    const user = userEvent.setup();
+
+    render(<MachinaEntryApp gateway={gateway} />);
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Temporary session failure.');
+    await user.click(screen.getByRole('button', {name: 'Retry secure workspace'}));
+
+    expect(await screen.findByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(attempts).toBe(2);
+  });
 });
