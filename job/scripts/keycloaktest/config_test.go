@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	previewRealmName       = "machina-preview"
-	previewClientID        = "machina-web"
+	previewRealmName        = "machina-preview"
+	previewClientID         = "machina-web"
 	clientSecretPlaceholder = "${MACHINA_KEYCLOAK_CLIENT_SECRET}"
 	redirectURIPlaceholder  = "${MACHINA_KEYCLOAK_REDIRECT_URI}"
 )
