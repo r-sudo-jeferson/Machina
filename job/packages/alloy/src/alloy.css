@@ -147,7 +147,7 @@
 }
 
 .alloy-field-error {
-  color: var(--alloy-danger);
+  color: var(--alloy-text-primary);
   font: inherit;
 }
 
