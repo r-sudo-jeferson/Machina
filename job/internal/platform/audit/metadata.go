@@ -33,8 +33,9 @@ type tenantSwitchMetadataPayload struct {
 }
 
 type authorizationDecisionMetadataPayload struct {
-	LatencyMS   int64    `json:"latency_ms"`
-	ReasonCodes []string `json:"reason_codes,omitempty"`
+	LatencyMS          int64    `json:"latency_ms"`
+	ReasonCodes        []string `json:"reason_codes,omitempty"`
+	reasonCodesPresent bool
 }
 
 func NewTenantSwitchMetadata(tenantID, workspaceID pgtype.UUID, sessionGeneration int64) (SafeMetadata, error) {
