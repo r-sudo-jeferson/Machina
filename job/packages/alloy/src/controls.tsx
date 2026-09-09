@@ -18,13 +18,6 @@ function joinClassNames(...values: Array<string | undefined>): string {
   return values.filter((value): value is string => Boolean(value)).join(' ');
 }
 
-function withBaseClass<T>(baseClass: string, className: string | ((values: T) => string) | undefined) {
-  if (typeof className === 'function') {
-    return (values: T) => joinClassNames(baseClass, className(values));
-  }
-  return joinClassNames(baseClass, className);
-}
-
 export interface ButtonProps extends AriaButtonProps {
   pendingLabel?: string;
 }
@@ -34,12 +27,15 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const stableAccessibleName = ariaLabel ?? (typeof children === 'string' ? children : undefined);
+  const accessibleNameProps = stableAccessibleName === undefined
+    ? {}
+    : {'aria-label': stableAccessibleName};
 
   return (
     <AriaButton
       {...props}
+      {...accessibleNameProps}
       ref={ref}
-      aria-label={stableAccessibleName}
       className={composeRenderProps(className, (resolvedClassName) =>
         joinClassNames('alloy-button', resolvedClassName)
       )}
@@ -113,6 +109,8 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
   },
   ref,
 ) {
+  const placeholderProps = placeholder === undefined ? {} : {placeholder};
+
   return (
     <AriaTextField
       {...props}
@@ -122,11 +120,11 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
     >
       <Label className="alloy-label">{label}</Label>
       <Input
+        {...placeholderProps}
         ref={ref}
         className={composeRenderProps(inputClassName, (resolvedClassName) =>
           joinClassNames('alloy-input', resolvedClassName)
         )}
-        placeholder={placeholder}
       />
       {errorMessage === undefined ? null : (
         <FieldError className="alloy-field-error">{errorMessage}</FieldError>

@@ -14,7 +14,7 @@
     "jsx": "react-jsx",
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node", "react"]
+    "types": ["node", "react", "vite/client"]
   },
   "include": [
     "generated/**/*.ts",
