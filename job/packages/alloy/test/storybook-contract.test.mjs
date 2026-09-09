@@ -25,6 +25,8 @@ test('Task 8.6 requires the Storybook state, accessibility, and CI evidence boun
   const requiredFiles = [
     '.storybook/main.ts',
     '.storybook/preview.ts',
+    '.storybook/preview.css',
+    'scripts/capture-critic-evidence.mjs',
     'src/material.stories.tsx',
     'src/controls.stories.tsx',
     'src/status.stories.tsx',
@@ -46,9 +48,14 @@ test('Task 8.6 requires the Storybook state, accessibility, and CI evidence boun
   const preview = await read('.storybook/preview.ts');
   assert.match(preview, /\.\.\/generated\/tokens\.css/);
   assert.match(preview, /\.\.\/src\/alloy\.css/);
+  assert.match(preview, /\.\/preview\.css/);
   assert.match(preview, /data-alloy-theme/);
   assert.match(preview, /silver/);
   assert.match(preview, /space-black/);
+
+  const previewCss = await read('.storybook/preview.css');
+  assert.match(previewCss, /background:\s*var\(--alloy-chassis\)/);
+  assert.match(previewCss, /color:\s*var\(--alloy-text-primary\)/);
 
   const materialStories = await read('src/material.stories.tsx');
   for (const requiredExport of ['SilverDepthMatrix', 'SpaceBlackDepthMatrix']) {
@@ -103,10 +110,21 @@ test('Task 8.6 requires the Storybook state, accessibility, and CI evidence boun
     packageJson.scripts?.['build-storybook'],
     'storybook build --config-dir .storybook --output-dir storybook-static',
   );
+  assert.equal(
+    packageJson.scripts?.['critic:evidence'],
+    'node scripts/capture-critic-evidence.mjs',
+  );
 
   const workflow = await readFile(
     path.join(repositoryRoot, '.github', 'workflows', 'verify-alloy.yml'),
     'utf8',
   );
   assert.match(workflow, /pnpm --filter @machina\/alloy build-storybook/);
+  assert.match(workflow, /pnpm --filter @machina\/alloy critic:evidence/);
+  assert.match(
+    workflow,
+    /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/,
+  );
+  assert.match(workflow, /alloy-storybook-critic-\$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /if-no-files-found:\s*error/);
 });
