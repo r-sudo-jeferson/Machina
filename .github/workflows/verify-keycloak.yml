@@ -7,7 +7,11 @@ on:
     paths:
       - 'job/deploy/keycloak/**'
       - 'job/scripts/keycloaktest/**'
-      - 'job/internal/platform/identity/*keycloak*'
+      - 'job/db/migrations/**'
+      - 'job/internal/platform/db/**'
+      - 'job/internal/platform/identity/**'
+      - 'job/go.mod'
+      - 'job/go.sum'
       - 'job/toolchains.lock.json'
       - '.github/workflows/verify-keycloak.yml'
 
