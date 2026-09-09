@@ -1,4 +1,5 @@
 import type {Meta, StoryObj} from '@storybook/react-vite';
+import {userEvent, within} from 'storybook/test';
 import {Button, IconButton, Switch, TextField} from './controls';
 
 const meta = {
@@ -14,7 +15,8 @@ export const ButtonDefault: Story = {
 
 export const ButtonKeyboardFocus: Story = {
   render: () => <Button>Keyboard focus target</Button>,
-  play: async ({canvas, userEvent}) => {
+  play: async ({canvasElement}) => {
+    const canvas = within(canvasElement);
     const button = canvas.getByRole('button', {name: 'Keyboard focus target'});
     await userEvent.tab();
     if (document.activeElement !== button || !button.hasAttribute('data-focus-visible')) {
@@ -37,11 +39,14 @@ export const ButtonLoading: Story = {
 
 export const ButtonPressed: Story = {
   render: () => <Button>Hold to confirm</Button>,
-  play: async ({canvas, userEvent}) => {
+  play: async ({canvasElement}) => {
+    const canvas = within(canvasElement);
     const button = canvas.getByRole('button', {name: 'Hold to confirm'});
     await userEvent.tab();
     await userEvent.keyboard('{Enter>}');
-    if (!button.hasAttribute('data-pressed')) {
+    const isPressed = button.hasAttribute('data-pressed');
+    await userEvent.keyboard('{/Enter}');
+    if (!isPressed) {
       throw new Error('Button must expose the React Aria pressed state during a real key press.');
     }
   },
@@ -97,7 +102,8 @@ export const SwitchDefault: Story = {
 
 export const SwitchKeyboardFocus: Story = {
   render: () => <Switch>Keyboard focus switch</Switch>,
-  play: async ({canvas, userEvent}) => {
+  play: async ({canvasElement}) => {
+    const canvas = within(canvasElement);
     const control = canvas.getByRole('switch', {name: 'Keyboard focus switch'});
     await userEvent.tab();
     const root = control.closest('.alloy-switch');
