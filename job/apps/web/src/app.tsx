@@ -75,6 +75,7 @@ export function MachinaEntryApp({
 }: MachinaEntryAppProps) {
   const [state, setState] = useState<EntryState>({kind: 'loading'});
   const [theme, setTheme] = useState<AlloyTheme>(readStoredTheme);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [tenantSwitch, setTenantSwitch] = useState<TenantSwitchState>({kind: 'idle'});
   const tenantSwitchController = useRef<AbortController | null>(null);
@@ -103,7 +104,7 @@ export function MachinaEntryApp({
     );
 
     return () => controller.abort();
-  }, [gateway]);
+  }, [gateway, loadAttempt]);
 
   useEffect(
     () => () => {
@@ -139,6 +140,9 @@ export function MachinaEntryApp({
               <strong>Workspace unavailable</strong>
               <span>{state.message}</span>
             </div>
+            <Button onPress={() => setLoadAttempt((attempt) => attempt + 1)}>
+              Retry secure workspace
+            </Button>
           </AlloySurface>
         </main>
       </AlloyChassis>
