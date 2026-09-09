@@ -63,3 +63,29 @@ func TestKeycloakOIDCProviderIntegration(t *testing.T) {
 		t.Fatal("Keycloak authorization URL did not preserve state/nonce")
 	}
 }
+
+func TestKeycloakOIDCProviderUnavailableIntegration(t *testing.T) {
+	if os.Getenv("MACHINA_RUN_KEYCLOAK_INTEGRATION") != "1" {
+		t.Skip("MACHINA_RUN_KEYCLOAK_INTEGRATION is not enabled")
+	}
+	if os.Getenv("MACHINA_EXPECT_KEYCLOAK_UNAVAILABLE") != "1" {
+		t.Skip("MACHINA_EXPECT_KEYCLOAK_UNAVAILABLE is not enabled")
+	}
+
+	clientSecret := os.Getenv("MACHINA_KEYCLOAK_CLIENT_SECRET")
+	if clientSecret == "" {
+		t.Fatal("Keycloak integration client secret is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := NewOIDCClient(ctx, OIDCClientConfig{
+		IssuerURL:    keycloakIntegrationIssuer,
+		ClientID:     keycloakIntegrationClientID,
+		ClientSecret: clientSecret,
+		RedirectURI:  keycloakIntegrationRedirect,
+	})
+	if err == nil {
+		t.Fatalf("Keycloak OIDC discovery unexpectedly succeeded during required outage: client_configured=%t", client != nil)
+	}
+}

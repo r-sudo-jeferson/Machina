@@ -126,4 +126,12 @@ MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
 MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
   go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL)$' -v ./internal/platform/identity
 
+# TDD RED: this assertion is intentionally executed while Keycloak is still
+# healthy. The next implementation step must create a real dependency outage;
+# changing the assertion to pass would violate the contract.
+MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
+MACHINA_EXPECT_KEYCLOAK_UNAVAILABLE=1 \
+MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
+  go test -race -count=1 -run '^TestKeycloakOIDCProviderUnavailableIntegration$' -v ./internal/platform/identity
+
 printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session boundary passed\n'
