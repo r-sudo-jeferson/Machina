@@ -12,6 +12,7 @@ readonly POSTGRES_DB='machina_test'
 readonly POSTGRES_MIGRATOR_ROLE='machina_migrator'
 readonly POSTGRES_RUNTIME_ROLE='machina_runtime'
 readonly POSTGRES_DATABASE_URL="postgresql://${POSTGRES_RUNTIME_ROLE}@127.0.0.1:15432/${POSTGRES_DB}?sslmode=disable&connect_timeout=2"
+readonly POSTGRES_MIGRATOR_DATABASE_URL="postgresql://${POSTGRES_MIGRATOR_ROLE}@127.0.0.1:15432/${POSTGRES_DB}?sslmode=disable&connect_timeout=2"
 
 fail() {
   printf 'keycloaktest: %s\n' "$*" >&2
@@ -124,11 +125,15 @@ for migration in "${migrations[@]}"; do
   docker exec -i "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_MIGRATOR_ROLE" -d "$POSTGRES_DB" < "$migration"
 done
 
+# The migrator URL is exposed only to this integration test process so it can
+# deterministically age a fixture row. Application session reads and rotation
+# remain bound to the separate non-owner machina_runtime connection.
 MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
 MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
 MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
 MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
+MACHINA_KEYCLOAK_MIGRATOR_DATABASE_URL="$POSTGRES_MIGRATOR_DATABASE_URL" \
   go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL)$' -v ./internal/platform/identity
 
 docker stop --timeout 15 "$CONTAINER" >/dev/null

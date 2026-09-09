@@ -171,6 +171,31 @@ func TestKeycloakHarnessExercisesRealOutageAndSameContainerRestart(t *testing.T)
 	}
 }
 
+func TestKeycloakHarnessSeparatesRuntimeAndExpiryFixtureDatabaseRoles(t *testing.T) {
+	scriptPath := filepath.Join(jobRoot(t), "scripts", "keycloaktest", "run.sh")
+	raw, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read Keycloak integration harness: %v", err)
+	}
+	script := string(raw)
+
+	required := []string{
+		`readonly POSTGRES_DATABASE_URL="postgresql://${POSTGRES_RUNTIME_ROLE}@127.0.0.1:15432/${POSTGRES_DB}?sslmode=disable&connect_timeout=2"`,
+		`readonly POSTGRES_MIGRATOR_DATABASE_URL="postgresql://${POSTGRES_MIGRATOR_ROLE}@127.0.0.1:15432/${POSTGRES_DB}?sslmode=disable&connect_timeout=2"`,
+		`MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL"`,
+		`MACHINA_KEYCLOAK_MIGRATOR_DATABASE_URL="$POSTGRES_MIGRATOR_DATABASE_URL"`,
+		`ExpiredApplicationSessionAgainstPostgreSQL`,
+	}
+	for _, fragment := range required {
+		if !strings.Contains(script, fragment) {
+			t.Fatalf("Keycloak integration harness is missing expiry-role invariant %q", fragment)
+		}
+	}
+	if strings.Contains(script, `export MACHINA_KEYCLOAK_MIGRATOR_DATABASE_URL`) {
+		t.Fatal("migrator fixture database URL is exported beyond the bounded integration test command")
+	}
+}
+
 func jobRoot(t *testing.T) string {
 	t.Helper()
 	_, currentFile, _, ok := runtime.Caller(0)
