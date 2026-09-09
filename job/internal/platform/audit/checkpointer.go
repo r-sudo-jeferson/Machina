@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrInvalidCheckpointer = errors.New("invalid audit checkpointer")
-	ErrCheckpointNotFound = errors.New("audit checkpoint not found")
+	ErrCheckpointNotFound  = errors.New("audit checkpoint not found")
 	ErrNoAuditEvents       = errors.New("audit chain has no events")
 )
 
