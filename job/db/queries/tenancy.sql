@@ -37,7 +37,7 @@ VALUES (sqlc.arg(tenant_id), sqlc.arg(subject_id), sqlc.arg(starter_role), 'acti
 RETURNING tenant_id, subject_id, starter_role, status, created_at, updated_at;
 
 -- name: AcceptInvitation :one
-SELECT tenant_id, subject_id, starter_role, status
+SELECT *
 FROM iam.accept_invitation(
   sqlc.arg(token_hash)::bytea,
   sqlc.arg(subject_id)::uuid
