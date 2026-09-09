@@ -511,7 +511,7 @@ func buildTenantSwitchResponse(
 	bind sqlcgen.BindTenantSwitchIdempotencyRow,
 	targetTenantID pgtype.UUID,
 ) (tenantSwitchSessionContext, []byte, string, error) {
-	if !switched.ActiveTenantID.Valid || !switched.ActiveWorkspaceID.Valid || !switched.ExpiresAt.After(time.Now().UTC()) {
+	if !switched.ActiveTenantID.Valid || !switched.ActiveWorkspaceID.Valid || switched.ExpiresAt.IsZero() {
 		return tenantSwitchSessionContext{}, nil, "", ErrInvalidTenantSwitchOutcome
 	}
 	sessionHash := HashToken(switched.SessionToken)
