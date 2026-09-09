@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Slice remains exactly `MCH-S001@1.0.0` under binding `FORGE-OPS-HIGHEND-v1.0.0` / canonical equivalent `FORGE-OPS-HIGHEND/v1.0.0`.
-- All product changes remain under `job`; existing root workflow glue is unchanged by this plan.
+- All product changes remain under `job`; provider-required root workflow glue may only select or invoke the corresponding `/job` checks and may be strengthened when required for durable coverage.
 - Do not mark Gate I, GAUNTLET, candidate freeze, promotion, or Slice completion.
 - Audit metadata and operational metrics remain separate boundaries.
 - No prompt, email, display name, cookie, CSRF value, session token, idempotency key, arbitrary context map, or caller-defined metadata key may enter `audit.SafeMetadata`.
@@ -138,11 +138,11 @@ go test -race -count=1 ./internal/platform/audit ./internal/platform/identity ./
 
 If the durable Go workflow does not yet include `audit` in the race command, strengthen the same existing workflow rather than creating a duplicate pipeline.
 
-- [ ] **Step 2: Independent critique**
+- [x] **Step 2: Independent critique**
 
 Review only the resulting diff against AC-S001-10, Gate I and pre-mortem risk 15. Search specifically for arbitrary-map escape hatches, unknown-field acceptance, duplicated/inconsistent decision state, sensitive raw content, changed tenant-switch/outbox semantics, and accidental Gate-I overclaim.
 
-- [ ] **Step 3: Update only proven checkboxes**
+- [x] **Step 3: Update only proven checkboxes**
 
 After exact-SHA CI and independent critique have no unresolved Critical/Important finding, mark only the parent-plan checkbox `Reconstruct one allowed and one denied decision from safe metadata` complete and record the exact implementation/restoration SHA plus Go/PostgreSQL run/job IDs. Keep Task 6 heading, trace-link evidence, signed audit checkpoint, Gate I, GAUNTLET, candidate freeze and promotion open.
 
@@ -158,8 +158,13 @@ After exact-SHA CI and independent critique have no unresolved Critical/Importan
 - Real PostgreSQL round-trip test added: SHA `34145f2f28b5932c232392dc99d439ccc7004bf7`; Go workflow `34272922478` / job `102218768521` succeeded, including full repository tests and the race gate. The integration test traverses `Recorder -> sqlc -> audit.events(jsonb) -> safe_metadata::text -> ReconstructDecision` under the non-owner runtime role and transaction-local tenant context.
 - PostgreSQL 18.6 integration wired into the existing dbtest/candidate surfaces by SHAs `f487cddd40b3b2644a07544b4cd5da4e4b58df7a`, `20b25df9f02b9382b325d5a8edfc51263b290b18`, and `53957982e2fe52c5356fe9b8d0442d2af87ffc7e`.
 - Exact final PostgreSQL evidence for the current code/test tree: SHA `53957982e2fe52c5356fe9b8d0442d2af87ffc7e`; PostgreSQL workflow `34273489468` / job `102220702151` succeeded. Logs explicitly show `TestDecisionEvidenceRoundTripPostgreSQL/allowed` PASS and `/denied` PASS, plus `TestTenantSwitchCoordinatorAgainstPostgreSQL` PASS and the complete PostgreSQL 18.6 tenancy/RLS kernel PASS. Runtime-role introspection remained `runtime_role_flags=0:0:0:0`, `owner_violations=0`, `rls_violations=0`, and `tenant_key_violations=0`.
+- Strict-null RED: test-only SHA `ccf6692ca30e4fdce80f2eaf0148d74e38f01a32`; Go workflow `34291356884` / job `102278382081` passed module, gofmt and vet checks, then failed only because JSONB-like `latency_ms:null` reconstructed both allow and deny as `0ms`. Formatter workflow `34291356891` and PostgreSQL workflow `34291356866` / job `102278381938` succeeded on the same SHA.
+- Strict-null GREEN: SHA `e0558658aeb21b3e853e68766c9b1897402abf73`; formatter workflow `34294215901`, Go workflow `34294215843` / job `102287173476`, and PostgreSQL workflow `34294215885` / job `102287173988` succeeded on the exact SHA.
+- Adjacent schema-presence RED: test-only SHA `27b84a9ec160761d0a734cf5e98133f83ef39c18`; Go workflow `34294860984` / job `102289159485` passed module, gofmt and vet checks, then failed only because allow metadata containing `reason_codes:null` was accepted. Formatter workflow `34294861029` and PostgreSQL workflow `34294860985` / job `102289159247` succeeded on the same SHA.
+- Final strict decoder checkpoint: SHA `2d7215e784346695022126752533aacb8254d1d9`; formatter workflow `34295107864` / job `102289916036`, Go workflow `34295107785` / job `102289918300`, and PostgreSQL workflow `34295107770` / job `102289918652` succeeded. The PostgreSQL job again reconstructed real allowed and denied rows under `machina_runtime`, reported `runtime_role_flags=0:0:0:0`, and found zero owner, RLS, or tenant-key violations.
+- Independent critique of `2d7215e784346695022126752533aacb8254d1d9` found no Critical or Important issue. Its only Minor noted no explicit deny-plus-null-reasons case; the common strict-null decoder rejects that representation before decision-specific validation, so there is no observed bypass. Independent local package and race tests also succeeded; exact-SHA GitHub Actions remains the authoritative full-gate evidence.
 - Existing tenant-switch assertions predated this audit-safety task and already checked audit/outbox equivalence. Task 3 Step 1 remains unchecked because no new failing tenant-switch assertion was captured for this plan; no retroactive RED is claimed.
 - Task 1 historical RED/verification checkboxes remain unchecked here because this evidence update does not retroactively manufacture execution records that were not captured in this plan.
 - Local execution in the ChatGPT runtime remains `NOT_VERIFIED` because outbound DNS previously prevented repository cloning; no local PASS is claimed. Exact-SHA GitHub Actions evidence is authoritative for the executions listed above.
-- Review-open tension: provider-required root workflow glue was strengthened to include `audit` in the race gate and to execute the existing `/job` PostgreSQL audit round-trip. This is allowed by the repository-level rule permitting provider glue outside `job`, but the literal Global Constraint above says existing root workflow glue is unchanged by this plan. That tension is intentionally not rewritten or waived here and remains an explicit input to the independent critique.
-- Builder self-review is not independent critique. Task 4 Step 2, the parent-plan reconstruction checkbox, Gate I, GAUNTLET `GNT-MCH-S001-001`, candidate freeze, GitLab promotion, and Slice completion remain open.
+- Provider-required root workflow glue was strengthened only to select the existing `/job` audit race and PostgreSQL round-trip checks, consistent with the repository rule permitting provider glue outside `job`.
+- The parent-plan reconstruction checkbox is now supported by exact-SHA CI and independent critique. Trace-link evidence, signed audit checkpoint behavior, Gate I, GAUNTLET `GNT-MCH-S001-001`, candidate freeze, GitLab promotion, and Slice completion remain open.

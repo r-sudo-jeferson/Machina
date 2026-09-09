@@ -185,7 +185,11 @@
   - Restored implementation SHA `03ae1a913ce8f85a4f2fe6d6749ef44f0e8aa35d`: Go workflow `34265685051` / job `102194331109`, PostgreSQL workflow `34265684912` / job `102194331039`, and formatting workflow `34265684916` all succeeded.
   - Verification SHA `dac86be3dffff91624cb967d5a8a0a6852d70e74`: Go workflow `34265797509` / job `102194712088` succeeded, including `go mod tidy -diff`, gofmt, `go vet ./...`, repository verification, `go test -count=1 ./...`, and `go test -race -count=1 ./internal/platform/observability ./internal/platform/identity`.
   - Local execution in the ChatGPT runtime is NOT_VERIFIED because outbound DNS prevented repository cloning; no local PASS is claimed. Exact-SHA GitHub Actions is the execution evidence above.
-- [ ] Reconstruct one allowed and one denied decision from safe metadata.
+- [x] Reconstruct one allowed and one denied decision from safe metadata.
+  - Evidence (2026-09-09): the strict reconstruction boundary rejects unknown, duplicate, null, wrong-type, unsafe-reason, and decision-inconsistent metadata while accepting PostgreSQL `jsonb` normalization for one real allow and one real deny under the non-owner runtime role.
+  - Behavioral RED SHAs `ccf6692ca30e4fdce80f2eaf0148d74e38f01a32` and `27b84a9ec160761d0a734cf5e98133f83ef39c18` failed only for accepted `latency_ms:null` and allow-side `reason_codes:null`, respectively, after module, formatting, and vet checks passed.
+  - Exact final SHA `2d7215e784346695022126752533aacb8254d1d9`: formatter workflow `34295107864` / job `102289916036`, Go workflow `34295107785` / job `102289918300`, and PostgreSQL workflow `34295107770` / job `102289918652` succeeded. PostgreSQL evidence reported `runtime_role_flags=0:0:0:0` and zero owner, RLS, or tenant-key violations.
+  - Independent critique found no Critical or Important issue; one Minor coverage note does not expose a bypass because all JSON null values are rejected before decision-specific validation.
 - [ ] Evidence: trace IDs linking HTTP→authz→DB→audit/outbox and redaction assertions.
 - [ ] Rollback: additive tables and worker can be disabled without bypassing audit on API mutations.
 
