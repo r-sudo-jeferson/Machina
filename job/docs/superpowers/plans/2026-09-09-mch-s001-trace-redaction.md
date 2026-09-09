@@ -52,7 +52,7 @@
 - Produces `(*tenantSwitchTracing).start(context.Context, tenantSwitchSpanName, pgtype.UUID) (context.Context, trace.Span)`.
 - Produces `finishTenantSwitchSpan(trace.Span, observability.Outcome)`.
 
-- [ ] **Step 1: Write the failing HTTP root-span test against existing constructors**
+- [x] **Step 1: Write the failing HTTP root-span test against existing constructors**
 
 Use a synchronous in-memory exporter and temporarily install its provider as the OpenTelemetry global before constructing the existing handler. Restore the previous global provider in cleanup. Exercise a valid tenant-switch HTTP request with an existing recording switcher that captures the server-generated correlation ID and returns an explicit forbidden result. Do not reference any not-yet-defined tracing production symbol in this RED commit.
 
@@ -68,11 +68,11 @@ if len(spans) != 1 || spans[0].Name != "tenant.switch.http" {
 
 Require HTTP 403 and the existing `tenant_switch_forbidden` RFC 9457 response without cookies or ETag. Assert one root span with only `machina.correlation_id` and `machina.outcome`; its correlation value equals the UUID captured from the server-owned request and its outcome is `denied`.
 
-- [ ] **Step 2: Publish only the root-span test and observe exact-SHA behavioral RED**
+- [x] **Step 2: Publish only the root-span test and observe exact-SHA behavioral RED**
 
 Require `go mod tidy -diff`, repository-wide gofmt, `go vet ./...`, and all pre-existing tests to succeed before the new assertion. The valid RED is exactly zero exported spans where one closed HTTP span is required; a compilation, import, module, format, fixture, or harness failure is invalid.
 
-- [ ] **Step 3: Implement the minimum closed adapter**
+- [x] **Step 3: Implement the minimum closed adapter**
 
 Use package-private constants and do not accept arbitrary attribute keys or values. `NewTenantSwitchHTTPHandler` and the existing private constructor must acquire the global tracer only during construction; add a further package-private tracing-aware constructor for deterministic tests without changing either existing signature. Start the HTTP span only after the correlation ID is generated, pass its context to `Switch`, and finish it on every result branch with the same closed outcome already used by metrics.
 
@@ -117,7 +117,7 @@ func finishTenantSwitchSpan(span trace.Span, outcome observability.Outcome) {
 
 `tenantSwitchNoopSpan` must use OpenTelemetry's no-op tracer provider and return `context.Background()` plus a non-nil no-op span. `validTenantSwitchSpanName` must enumerate exactly the five constants above; `validTenantSwitchTraceOutcome` must enumerate exactly the five existing observability outcomes. Validate constructor inputs and keep the name/outcome arguments private typed enums so no request value can become a span name or attribute. Add direct GREEN assertions for nil tracer rejection, nil context/unknown-name no-op behavior, invalid-correlation omission, and nil-span/invalid-outcome safety. Do not record error values, events, stacks, tenant coordinates, policy hashes, or diagnostic references.
 
-- [ ] **Step 4: Verify adapter GREEN on the exact SHA**
+- [x] **Step 4: Verify adapter GREEN on the exact SHA**
 
 Require the complete Go workflow, including the existing audit/identity/observability race command. Inspect the exported HTTP span directly; a passing no-op-only test is insufficient.
 
@@ -135,7 +135,7 @@ Require the complete Go workflow, including the existing audit/identity/observab
 - Consume the private `newTenantSwitchHTTPHandlerWithTracing` from Task 1 and produce `newTenantSwitchCoordinatorWithTracing` for deterministic tests.
 - `TenantSwitchHTTPHandler` already has a package-private correlation generator initialized to `newTenantSwitchUUID`; production behavior stays cryptographically random.
 
-- [ ] **Step 1: Write the full-chain failing test**
+- [x] **Step 1: Write the full-chain failing test**
 
 Use the existing HTTP middleware/request helpers, `recordingTenantSwitchUnit`, and allow authorizer. Configure the recording unit so its claim returns the correlation received in `ClaimIdempotencyKeyParams`. Inject the same `tenantSwitchTracing` from Task 1 into handler and coordinator, then send one valid POST.
 
@@ -153,17 +153,17 @@ wantNames := []string{
 
 Require exactly one span of each name; one non-zero trace ID across all five; HTTP as root; transaction as HTTP child; authorization, audit, and outbox as transaction children; the same canonical `machina.correlation_id` on every span; and equality with `unit.auditParams.CorrelationID`, `unit.outboxParams.CorrelationID`, and `unit.claimParams.CorrelationID`. Reassert authorization occurred before claim/mutation and audit/outbox remained inside the transaction.
 
-- [ ] **Step 2: Publish only the full-chain test and observe behavioral RED**
+- [x] **Step 2: Publish only the full-chain test and observe behavioral RED**
 
 Module, format, vet, existing tests, and adapter tests must pass. The new test must fail because production emits fewer than the five linked spans. A compile/harness failure is not valid RED.
 
-- [ ] **Step 3: Wire spans without moving behavior**
+- [x] **Step 3: Wire spans without moving behavior**
 
 In the HTTP handler, generate the correlation ID first, start the HTTP span with it, and pass the returned context into `Switch`. In `Switch`, start the transaction span before `c.run` and pass that context to the runner. In `authorizeTenantSwitch`, start/end the authorization span around the existing `Authorize` call. In `claimAndSwitch`, start/end audit and outbox spans immediately around the existing `Record` and `Publish` calls.
 
 Do not move any call across the Cedar, claim, session mutation, audit, outbox, completion, finish, or commit boundaries. End spans on every branch with only the closed outcome. Map explicit Cedar deny to `denied`, idempotency conflicts to `conflict`, replay to `replay`, successful mutation to `success`, and uncertainty/transport/policy/integrity failures to `error`.
 
-- [ ] **Step 4: Verify full-chain GREEN on the exact SHA**
+- [x] **Step 4: Verify full-chain GREEN on the exact SHA**
 
 Require formatter, complete Go/race, PostgreSQL 18.6 plus Rust musl integration, and the Rust authorization/interoperability/performance workflow because identity authorization changes are path-selected into that workflow.
 
@@ -176,17 +176,17 @@ Require formatter, complete Go/race, PostgreSQL 18.6 plus Rust musl integration,
 - Consumes the closed tracing adapter and production wiring from Tasks 1-2.
 - Produces deny/error redaction evidence without changing public API or response contracts.
 
-- [ ] **Step 1: Write failing deny and unavailable trace assertions**
+- [x] **Step 1: Write failing deny and unavailable trace assertions**
 
 For `errors.Join(ErrTenantSwitchForbidden, errors.New("trace-secret-forbidden"))` require HTTP 403, problem code `tenant_switch_forbidden`, no cookies/ETag, HTTP span outcome `denied`, and no exported string containing the sentinel. For `errors.Join(ErrTenantSwitchAuthorizationUnavailable, errors.New("trace-secret-unavailable"))` require HTTP 503, code `tenant_switch_authorization_unavailable`, outcome `error`, and the same redaction.
 
 Inspect span names, attribute keys/values, events, status descriptions, and links. Require zero subject/tenant/workspace/policy/idempotency attributes and zero audit/outbox spans on pre-mutation authorization failure.
 
-- [ ] **Step 2: Observe behavioral RED if failure outcomes/redaction are incomplete**
+- [x] **Step 2: Observe behavioral RED if failure outcomes/redaction are incomplete**
 
 Accept RED only after formatting, vet, and existing behavior pass. If the initial implementation already satisfies the new assertions, perform the mutation in Step 3 rather than weakening or inventing a failure.
 
-- [ ] **Step 3: Prove redaction sensitivity with a temporary mutation**
+- [x] **Step 3: Prove redaction sensitivity with a temporary mutation**
 
 Temporarily add exactly one forbidden production call:
 
@@ -196,7 +196,7 @@ span.RecordError(err)
 
 or set a span status description from `err.Error()`. Publish the mutation on a normal fast-forward commit, require the redaction test to fail because the sentinel appears, then restore the production blob byte-for-byte. Do not change the test during the mutation cycle.
 
-- [ ] **Step 4: Reverify the restored exact SHA**
+- [x] **Step 4: Reverify the restored exact SHA**
 
 Prove zero diff for the restored production file against the pre-mutation safe blob. Run formatter, full Go/race, PostgreSQL, and Rust authorization workflows on the same restored SHA.
 
@@ -210,15 +210,15 @@ Prove zero diff for the restored production file against the pre-mutation safe b
 - Consumes the real `machina_runtime` role, PostgreSQL 18.6, Rust Cedar process, and existing tenant-switch integration harness.
 - Produces one committed trace whose correlation attribute equals the idempotency receipt, audit row, and outbox row correlation IDs.
 
-- [ ] **Step 1: Add the PostgreSQL-backed trace assertion**
+- [x] **Step 1: Add the PostgreSQL-backed trace assertion**
 
 Install the in-memory exporter on the coordinator used by the existing successful PostgreSQL tenant switch. Query receipt, `audit.events`, and `ops.outbox` by their tenant-scoped keys using the existing admin inspection connection. Assert their correlation UUIDs are identical to the five-span trace correlation and that runtime role introspection remains `0:0:0:0`.
 
-- [ ] **Step 2: Publish the integration test before any harness change**
+- [x] **Step 2: Publish the integration test before any harness change**
 
 Require a behavioral RED only if product instrumentation is incomplete. If the test passes with existing production instrumentation, retain it as new evidence and do not manufacture RED by altering a correct harness.
 
-- [ ] **Step 3: Verify clean-environment exact-SHA integration**
+- [x] **Step 3: Verify clean-environment exact-SHA integration**
 
 Require static Rust 1.98.1 musl build, PostgreSQL 18.6, non-owner runtime role, FORCE RLS checks, successful tenant switch, audit/outbox atomicity, and trace correlation in the same job. Preserve and debug any infrastructure retry; do not hide attempts.
 
@@ -232,17 +232,26 @@ Require static Rust 1.98.1 musl build, PostgreSQL 18.6, non-owner runtime role, 
 **Interfaces:**
 - Produces durable evidence only for Task 6 trace-link/redaction work.
 
-- [ ] **Step 1: Obtain independent critique**
+- [x] **Step 1: Obtain independent critique**
 
 Review the exact resulting SHA for contract coverage, parent/trace integrity, authorization ordering, transaction atomicity, replay, error classification, unbounded attributes, PII/secrets, raw error events/descriptions, trace failure side effects, RLS, concurrency, performance overhead, and unjustified abstraction.
 
-- [ ] **Step 2: Correct every real finding through RED→GREEN**
+- [x] **Step 2: Correct every real finding through RED→GREEN**
 
 Preserve each finding and failing evidence, implement the smallest root cause, rerun all affected exact-SHA gates, and repeat critique until no Critical/Important finding remains.
 
-- [ ] **Step 3: Update only proven state**
+- [x] **Step 3: Update only proven state**
 
 Mark only `Evidence: trace IDs linking HTTP→authz→DB→audit/outbox and redaction assertions` complete after the exact-SHA gates and critique. Keep signed audit checkpoint behavior, complete Gate I, Task 7+, GAUNTLET, candidate freeze, promotion, and Slice completion open.
+
+## Execution Evidence
+
+- HTTP root-span behavioral RED: `9a86be0decae958820f508ccc5c778c4d105e4f7`; Go workflow `34297567641` / job `102297387130` passed module, formatting and vet gates, then failed exactly because `TestTenantSwitchHTTPEmitsClosedRootSpan` exported zero spans instead of one. GREEN root implementation landed at `a495838dea2a51d7f2700b13eba1f2c31cf812ae`.
+- Full-chain behavioral RED: `ce4cbaa60cb23c918f6250df884221eb72af6d3c`; Go workflow `34336064037` / job `102415610609` passed module, formatting and vet gates, then failed exactly because `TestTenantSwitchTraceLinksHTTPAuthorizationTransactionAuditAndOutbox` exported one span instead of five. GREEN chain wiring landed at `8d6d27698f4c6d1a469e8dbc184f86d5677c81e2`.
+- Redaction mutation sensitivity: mutation SHA `4ad9690a6ce04f59893e9ee4429a702c5ec7a408`; Go workflow `34338441516` / job `102423255772` failed exactly because the forbidden `span.RecordError` exported `exception.message` containing `trace-secret-forbidden` and `trace-secret-unavailable`. Production redaction was restored at `d0f004268855eede7b2aee56c43edc442ec214de` without weakening the assertions.
+- Final PostgreSQL correlation evidence and reviewed product SHA: `a00e7c8f79369dcc7ca74af4b065043ab83a7813`. Formatter workflow `34339654546`, Go workflow `34339654533` / job `102427186129`, PostgreSQL workflow `34339654525` / job `102427187365`, and Rust authorization workflow `34339654545` all succeeded on the exact SHA. The PostgreSQL job exercised the real `machina_runtime` role, reported `runtime_role_flags=0:0:0:0`, preserved zero ownership/RLS/tenant-key violations, and passed the HTTP trace-correlation persistence case.
+- Separated Critic review of `a00e7c8f79369dcc7ca74af4b065043ab83a7813` found no unresolved Critical or Important defect across trace parentage, authorization ordering, transaction atomicity, error classification, redaction, bounded attributes, RLS, replay non-mutation, concurrency/performance impact, or abstraction scope. Replay already has behavioral coverage proving no session rotation, no new browser secrets, and no audit/outbox mutation; a dedicated replay exporter-tree assertion remains optional strengthening, not a demonstrated contract miss.
+- No local runtime PASS is claimed by this evidence update; the execution evidence is the exact-SHA GitHub Actions and PostgreSQL/Rust jobs above.
 
 ## Plan Self-Review
 
