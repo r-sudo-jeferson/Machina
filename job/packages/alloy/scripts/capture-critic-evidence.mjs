@@ -286,6 +286,15 @@ async function assertStoryIdsExist() {
   }
 }
 
+async function removeChromeProfile(userDataRoot) {
+  await rm(userDataRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  });
+}
+
 async function launchChrome() {
   const userDataRoot = await mkdtemp(path.join(tmpdir(), 'machina-alloy-chrome-'));
   const child = spawn(chromeBinary, [
@@ -331,7 +340,7 @@ async function launchChrome() {
     return {child, userDataRoot, webSocketUrl};
   } catch (error) {
     child.kill('SIGKILL');
-    await rm(userDataRoot, {recursive: true, force: true});
+    await removeChromeProfile(userDataRoot);
     throw error;
   }
 }
@@ -350,7 +359,7 @@ async function stopChrome(browser) {
       browser.child.kill('SIGKILL');
     }
   }
-  await rm(browser.userDataRoot, {recursive: true, force: true});
+  await removeChromeProfile(browser.userDataRoot);
 }
 
 async function connectCdp(webSocketUrl) {
