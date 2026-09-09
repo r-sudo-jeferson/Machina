@@ -86,7 +86,7 @@ export const TextFieldError: Story = {
       value="invalid slug"
       isInvalid
       errorMessage="Use lowercase letters, numbers, and hyphens only."
-      readOnly
+      isReadOnly
     />
   ),
 };
