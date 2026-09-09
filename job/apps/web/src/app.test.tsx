@@ -1,7 +1,13 @@
 import {render, screen} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {describe, expect, it} from 'vitest';
 import {MachinaEntryApp} from './app';
-import type {EntryGateway, SessionContext} from './entry/contracts';
+import type {
+  EntryGateway,
+  EntryMutationGateway,
+  SessionContext,
+  TenantSwitchCommand,
+} from './entry/contracts';
 
 const readySession: SessionContext = {
   identity: {
@@ -48,6 +54,21 @@ const readySession: SessionContext = {
   expires_at: '2026-09-10T12:00:00Z',
 };
 
+const switchedSession: SessionContext = {
+  ...readySession,
+  active: {
+    ...readySession.active,
+    tenant: readySession.available_tenants[1]!,
+    workspace: {
+      id: '00000000-0000-4000-8000-000000000021',
+      tenant_id: '00000000-0000-4000-8000-000000000011',
+      slug: 'foundry',
+      display_name: 'Foundry',
+    },
+    policy_version: 8,
+  },
+};
+
 function pendingGateway(): EntryGateway {
   return {
     loadSession: async () => await new Promise<SessionContext>(() => {}),
@@ -80,5 +101,41 @@ describe('Machina entry journey', () => {
     expect(screen.getByText('Denied')).toBeTruthy();
     expect(screen.getByText('role_not_permitted')).toBeTruthy();
     expect(screen.getByText('Policy v7')).toBeTruthy();
+  });
+
+  it('switches only to a server-provided tenant and adopts the returned authorized context', async () => {
+    const commands: TenantSwitchCommand[] = [];
+    const gateway: EntryMutationGateway = {
+      loadSession: async () => readySession,
+      switchTenant: async (command) => {
+        commands.push(command);
+        return switchedSession;
+      },
+    };
+    const user = userEvent.setup();
+
+    render(
+      <MachinaEntryApp
+        gateway={gateway}
+        newIdempotencyKey={() => 'tenant-switch-ui-operation-0001'}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole('combobox', {name: 'Tenant context'}),
+      '00000000-0000-4000-8000-000000000011',
+    );
+    await user.click(screen.getByRole('button', {name: 'Switch context'}));
+
+    expect(commands).toEqual([
+      {
+        tenantId: '00000000-0000-4000-8000-000000000011',
+        idempotencyKey: 'tenant-switch-ui-operation-0001',
+      },
+    ]);
+    expect(await screen.findByRole('heading', {name: 'Forge Labs / Foundry'})).toBeTruthy();
+    expect(screen.getByText('Policy v8')).toBeTruthy();
+    expect(screen.queryByRole('heading', {name: 'Acme / Core'})).toBeNull();
   });
 });
