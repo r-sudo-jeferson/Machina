@@ -1,0 +1,77 @@
+name: Verify Rust authorization
+
+on:
+  push:
+    branches:
+      - forge/mch-s001-1.0.0
+    paths:
+      - 'job/Cargo.toml'
+      - 'job/Cargo.lock'
+      - 'job/rust-toolchain.toml'
+      - 'job/go.mod'
+      - 'job/go.sum'
+      - 'job/contracts/proto/authz/v1/authz.proto'
+      - 'job/gen/authz/v1/**'
+      - 'job/internal/platform/authz/**'
+      - 'job/internal/platform/identity/**'
+      - 'job/services/authz/**'
+      - 'job/db/migrations/0001_schemas.sql'
+      - 'job/db/migrations/0002_identity_tenancy.sql'
+      - 'job/db/migrations/0003_authorization.sql'
+      - 'job/db/migrations/0006_rls.sql'
+      - 'job/db/migrations/0007_integrity.sql'
+      - 'job/scripts/authztest/**'
+      - 'job/scripts/authzperf/**'
+      - 'job/docs/engineering/MCH-S001-authz-performance.md'
+      - '.github/workflows/verify-authz.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-authz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout verification ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify checked ref identity
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          printf 'workflow_sha=%s\n' "$GITHUB_SHA"
+          printf 'checked_sha=%s\n' "$checked_sha"
+          test "$checked_sha" = "$GITHUB_SHA"
+
+      - name: Setup Go 1.27.1
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.1'
+          cache: false
+
+      - name: Verify locked Rust 1.98.1 authorization service
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --component clippy --component rustfmt
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 metadata --locked --format-version 1 >/dev/null
+          cargo +1.98.1 fmt --all --check
+          cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
+          cargo +1.98.1 test --locked --workspace --all-targets
+
+      - name: Verify PostgreSQL-backed policy loading and Go client interoperability
+        working-directory: job
+        run: bash scripts/authztest/run.sh
+
+      - name: Verify authorization performance objective
+        working-directory: job
+        run: bash scripts/authzperf/run.sh

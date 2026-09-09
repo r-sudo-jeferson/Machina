@@ -1,6 +1,6 @@
 # AGENTS.md — GitHub Construction Environment
 
-FORGE_BINDING_ID: `FORGE-OPS-HIGHEND/v1.0.0`
+FORGE_BINDING_ID: `FORGE-OPS-HIGHEND-v1.0.0`
 PROJECT_ROLE: `CONSTRUCTION`
 CANONICAL_REPOSITORY: `machina-group/machina`
 CONSTRUCTION_REPOSITORY: `r-sudo-jeferson/Machina`
@@ -13,7 +13,7 @@ This file is the mandatory operating contract for every AI, coding agent, engine
 Before any write, the actor must verify that:
 
 1. the active ChatGPT Project is `PROJECT ENGINEERING — FORGE OS High-End Execution Control Plane`;
-2. its Project instructions declare `FORGE_BINDING_ID = FORGE-OPS-HIGHEND/v1.0.0`;
+2. its Project instructions declare `FORGE_BINDING_ID = FORGE-OPS-HIGHEND-v1.0.0`;
 3. GitLab `machina-group/machina:AGENTS.md` declares the same binding ID;
 4. this file declares the same binding ID;
 5. an active authorized Slice handoff exists.
@@ -66,7 +66,7 @@ A lower level cannot silently weaken, reinterpret or replace a higher level.
 
 Engineering must receive an active Slice envelope containing at least:
 
-- `binding_id` = `FORGE-OPS-HIGHEND/v1.0.0`;
+- `binding_id` = `FORGE-OPS-HIGHEND-v1.0.0`;
 - `initiative_id`;
 - `slice_id`;
 - `slice_version`;
@@ -183,7 +183,7 @@ Promote the exact accepted `/job` state to GitLab Canon.
 When supported by the VCS workflow, use promotion traceability trailers:
 
 ```text
-Forge-Binding: FORGE-OPS-HIGHEND/v1.0.0
+Forge-Binding: FORGE-OPS-HIGHEND-v1.0.0
 Forge-Slice: <slice_id>@<slice_version>
 Forge-Gauntlet: <gauntlet_id>
 GitLab-Base: <gitlab_base_sha>

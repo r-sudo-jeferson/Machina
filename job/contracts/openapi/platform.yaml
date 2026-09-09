@@ -1,0 +1,365 @@
+openapi: 3.1.1
+info:
+  title: Machina Platform API
+  version: 1.0.0
+  description: Secure tenant-entry and read-only ASK AI First contract for MCH-S001.
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+servers:
+  - url: /api
+security:
+  - sessionCookie: []
+tags:
+  - name: Session
+  - name: Tenancy
+  - name: Context
+  - name: Ask
+paths:
+  /v1/session:
+    get:
+      operationId: getSessionContext
+      tags: [Session]
+      responses:
+        '200':
+          description: Authenticated session and active tenant context.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionContext'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/tenants:
+    post:
+      operationId: createTenant
+      tags: [Tenancy]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          description: Tenant, owner membership, and first workspace created atomically.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantBootstrap'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/tenant-switch:
+    post:
+      operationId: switchTenant
+      tags: [Tenancy]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwitchTenantRequest'
+      responses:
+        '200':
+          description: Active tenant switched after server-side membership authorization.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionContext'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      tags: [Tenancy]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 32
+            maxLength: 512
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CSRFToken'
+      responses:
+        '200':
+          description: Invitation accepted idempotently and authorized membership returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/context:
+    get:
+      operationId: getAuthorizedContext
+      tags: [Context]
+      responses:
+        '200':
+          description: Server-selected authorized identity, tenant, workspace, and capability facts.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizedContext'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/ask/context:
+    post:
+      operationId: askAuthorizedContext
+      tags: [Ask]
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AskContextRequest'
+      responses:
+        '200':
+          description: Server-sent event stream containing answer deltas, citations, completion, or safe failure.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-machina_session
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 256
+  headers:
+    ETag:
+      description: Strong resource/version validator.
+      required: true
+      schema:
+        type: string
+  responses:
+    Problem:
+      description: RFC 9457 problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        correlation_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+    Identity:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 160
+    Tenant:
+      type: object
+      additionalProperties: false
+      required: [id, slug, display_name, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        status:
+          type: string
+          enum: [active, suspended]
+    Workspace:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, slug, display_name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 63
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 160
+    Membership:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, subject_id, starter_role, status]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        subject_id:
+          type: string
+          format: uuid
+        starter_role:
+          type: string
+          enum: [owner, member]
+        status:
+          type: string
+          enum: [active, revoked]
+    Capability:
+      type: object
+      additionalProperties: false
+      required: [id, allowed]
+      properties:
+        id:
+          type: string
+        allowed:
+          type: boolean
+        reason_code:
+          type: string
+    AuthorizedContext:
+      type: object
+      additionalProperties: false
+      required: [identity, tenant, workspace, capabilities, policy_version]
+      properties:
+        identity:
+          $ref: '#/components/schemas/Identity'
+        tenant:
+          $ref: '#/components/schemas/Tenant'
+        workspace:
+          $ref: '#/components/schemas/Workspace'
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Capability'
+        policy_version:
+          type: integer
+          minimum: 1
+    SessionContext:
+      type: object
+      additionalProperties: false
+      required: [identity, active, available_tenants, expires_at]
+      properties:
+        identity:
+          $ref: '#/components/schemas/Identity'
+        active:
+          $ref: '#/components/schemas/AuthorizedContext'
+        available_tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant'
+        expires_at:
+          type: string
+          format: date-time
+    CreateTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_name, tenant_slug, workspace_name]
+      properties:
+        tenant_name:
+          type: string
+          minLength: 1
+          maxLength: 160
+        tenant_slug:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$'
+        workspace_name:
+          type: string
+          minLength: 1
+          maxLength: 160
+    TenantBootstrap:
+      type: object
+      additionalProperties: false
+      required: [tenant, workspace, membership]
+      properties:
+        tenant:
+          $ref: '#/components/schemas/Tenant'
+        workspace:
+          $ref: '#/components/schemas/Workspace'
+        membership:
+          $ref: '#/components/schemas/Membership'
+    SwitchTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant_id]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+    AskContextRequest:
+      type: object
+      additionalProperties: false
+      required: [question]
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 800
+        locale:
+          type: string
+          enum: [en-US, pt-BR]

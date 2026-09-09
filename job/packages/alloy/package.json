@@ -1,0 +1,39 @@
+{
+  "name": "@machina/alloy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:tokens": "node scripts/build-tokens.mjs",
+    "build-storybook": "storybook build --config-dir .storybook --output-dir storybook-static",
+    "critic:evidence": "node scripts/capture-critic-evidence.mjs",
+    "test": "node --test test/*.test.mjs && vitest run",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "react-aria-components": "1.21.1"
+  },
+  "peerDependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.6.0",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "axe-core": "4.13.0",
+    "jsdom": "30.0.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "storybook": "10.6.0",
+    "typescript": "6.0.3",
+    "vite": "8.1.0",
+    "vitest": "5.0.0"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://machina.local/contracts/events/v1/envelope.schema.json",
+  "title": "Machina Event Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "tenant_id",
+    "correlation_id",
+    "actor_id",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_type": {"type": "string", "minLength": 3, "maxLength": 160},
+    "event_version": {"type": "integer", "minimum": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "format": "uuid"},
+    "correlation_id": {"type": "string", "format": "uuid"},
+    "causation_id": {"type": "string", "format": "uuid"},
+    "actor_id": {"type": "string", "format": "uuid"},
+    "payload": {"type": "object"}
+  }
+}

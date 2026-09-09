@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://machina.local/contracts/ai/context-tool.result.schema.json",
+  "title": "Machina Context Read Tool Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["facts", "citations", "policy_version", "correlation_id"],
+  "properties": {
+    "facts": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "label", "value", "record_id"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["identity", "tenant", "workspace", "capability"]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "citations": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["citation_id", "record_type", "record_id"],
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "record_type": {
+            "type": "string",
+            "enum": ["identity", "tenant", "workspace", "capability"]
+          },
+          "record_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "policy_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid"
+    }
+  }
+}

@@ -1,0 +1,84 @@
+name: Verify PostgreSQL construction
+
+on:
+  push:
+    branches:
+      - forge/mch-s001-1.0.0
+    paths:
+      - 'job/Cargo.toml'
+      - 'job/Cargo.lock'
+      - 'job/rust-toolchain.toml'
+      - 'job/contracts/proto/authz/v1/authz.proto'
+      - 'job/gen/authz/v1/**'
+      - 'job/db/migrations/**'
+      - 'job/scripts/dbtest/**'
+      - 'job/internal/platform/audit/**'
+      - 'job/internal/platform/authz/**'
+      - 'job/internal/platform/db/**'
+      - 'job/internal/platform/identity/**'
+      - 'job/services/authz/**'
+      - 'job/go.mod'
+      - 'job/go.sum'
+      - '.github/workflows/verify-database.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-postgres-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout construction ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Verify checked ref identity
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          printf 'workflow_sha=%s\n' "$GITHUB_SHA"
+          printf 'checked_sha=%s\n' "$checked_sha"
+          test "$checked_sha" = "$GITHUB_SHA"
+
+      - name: Setup Go 1.27.1
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.27.1'
+          cache: false
+
+      - name: Verify invitation acceptance PostgreSQL boundary
+        working-directory: job
+        run: bash scripts/dbtest/run_invitation_acceptance.sh
+
+      - name: Build static Rust 1.98.1 authorization service
+        working-directory: job
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.98.1
+          rustup target add --toolchain 1.98.1 x86_64-unknown-linux-musl
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+          test "$(rustc +1.98.1 --version | awk '{print $2}')" = "1.98.1"
+          cargo +1.98.1 build --locked --bin machina-authz --target x86_64-unknown-linux-musl
+          authz_binary='target/x86_64-unknown-linux-musl/debug/machina-authz'
+          test -x "$authz_binary"
+          if readelf -l "$authz_binary" | grep -q 'Requesting program interpreter'; then
+            printf 'authorization binary is dynamically linked and cannot be copied across libc boundaries\n' >&2
+            exit 1
+          fi
+
+      - name: Verify PostgreSQL 18.6 tenancy identity authz and audit kernel
+        working-directory: job
+        run: |
+          set -euo pipefail
+          MACHINA_TENANT_SWITCH_AUTHZ_BINARY="$PWD/target/x86_64-unknown-linux-musl/debug/machina-authz" \
+          MACHINA_RUN_TENANT_SWITCH_GO_INTEGRATION=1 \
+          MACHINA_RUN_AUDIT_GO_INTEGRATION=1 \
+            bash scripts/dbtest/run.sh

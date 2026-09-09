@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "slice": "MCH-S001@1.0.0",
+  "policy": "Exact versions are mandatory. Any GitHub Action must be pinned by full commit SHA before use. Any OCI image must be pinned by digest before it enters CI, preview, or release execution.",
+  "toolchains": {
+    "go": {
+      "version": "1.27.1",
+      "source": "go.dev"
+    },
+    "rust": {
+      "version": "1.98.1",
+      "source": "rust-lang.org"
+    },
+    "node": {
+      "version": "24.20.0",
+      "channel": "LTS",
+      "source": "nodejs.org"
+    },
+    "pnpm": {
+      "version": "12.3.4",
+      "source": "pnpm.io"
+    },
+    "sqlc": {
+      "version": "1.31.1",
+      "source": "github.com/sqlc-dev/sqlc/releases",
+      "linuxAmd64ArchiveSha256": "497ae4fcdfa64c5b0c311ffe4c2bd991e43991e82e5367792ed78bc2dca27354"
+    }
+  },
+  "platformDependencies": {
+    "postgresql": {
+      "version": "18.6",
+      "source": "postgresql.org"
+    },
+    "keycloak": {
+      "version": "26.7.3",
+      "source": "keycloak.org",
+      "image": "quay.io/keycloak/keycloak",
+      "imageDigest": "sha256:ff4257d0d64efbe99ed1ddfaf07765cc3c36dc7518bf8324d41961327f441c54"
+    },
+    "pgx": {
+      "version": "5.10.0",
+      "source": "github.com/jackc/pgx"
+    }
+  },
+  "securityTools": {
+    "gitleaks": {
+      "version": "8.30.1",
+      "source": "gitleaks.io",
+      "image": "ghcr.io/gitleaks/gitleaks",
+      "imageDigest": "sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+    }
+  },
+  "webBaseline": {
+    "react": "19.2",
+    "vite": "8.1"
+  },
+  "githubActions": {
+    "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "actions/setup-go": "b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+    "actions/setup-node": "820762786026740c76f36085b0efc47a31fe5020"
+  }
+}

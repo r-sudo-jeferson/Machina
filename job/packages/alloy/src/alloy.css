@@ -1,0 +1,280 @@
+@import "@fontsource-variable/inter/wght.css";
+@import "../generated/tokens.css";
+
+.alloy-chassis,
+.alloy-surface,
+.alloy-well,
+.alloy-button,
+.alloy-input,
+.alloy-switch,
+.alloy-status-lamp {
+  box-sizing: border-box;
+}
+
+.alloy-chassis {
+  background: var(--alloy-chassis);
+  color: var(--alloy-text-primary);
+  font-family: var(--alloy-font-interface);
+}
+
+.alloy-surface {
+  background: var(--alloy-surface);
+  color: var(--alloy-text-primary);
+}
+
+.alloy-well {
+  background: var(--alloy-well);
+  color: var(--alloy-text-primary);
+}
+
+.alloy-button {
+  align-items: center;
+  appearance: none;
+  background: var(--alloy-raised);
+  border: var(--alloy-focus-width) solid transparent;
+  border-radius: 12px;
+  box-shadow: var(--alloy-material-convex-low-shadow);
+  color: var(--alloy-text-primary);
+  cursor: pointer;
+  display: inline-grid;
+  font: inherit;
+  font-weight: 600;
+  justify-items: center;
+  min-block-size: var(--alloy-target-preferred);
+  min-inline-size: var(--alloy-target-preferred);
+  padding-block: 8px;
+  padding-inline: 16px;
+  position: relative;
+  transition-duration: var(--alloy-motion-feedback-standard);
+  transition-property: box-shadow, border-color, background-color, color;
+  transition-timing-function: var(--alloy-motion-easing-standard);
+}
+
+.alloy-button[data-hovered]:not([data-disabled]):not([data-pending]) {
+  box-shadow: var(--alloy-material-convex-high-shadow);
+}
+
+.alloy-button[data-pressed]:not([data-disabled]) {
+  box-shadow: var(--alloy-material-concave-low-shadow);
+}
+
+.alloy-button[data-focus-visible],
+.alloy-input[data-focus-visible],
+.alloy-switch[data-focus-visible] {
+  outline: var(--alloy-focus-width) solid var(--alloy-focus);
+  outline-offset: var(--alloy-focus-offset);
+}
+
+.alloy-button[data-disabled],
+.alloy-button[data-pending] {
+  cursor: default;
+}
+
+.alloy-button[data-disabled] {
+  box-shadow: none;
+  color: var(--alloy-text-disabled);
+}
+
+.alloy-button__content,
+.alloy-button__progress {
+  grid-area: 1 / 1;
+}
+
+.alloy-button[data-pending] .alloy-button__content {
+  opacity: 0;
+}
+
+.alloy-button__progress {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-block-size: 1em;
+  min-inline-size: 1em;
+}
+
+.alloy-button__progress-indicator {
+  block-size: 0.9em;
+  border: var(--alloy-focus-width) solid var(--alloy-text-secondary);
+  border-block-start-color: var(--alloy-ai);
+  border-radius: 50%;
+  inline-size: 0.9em;
+  animation: alloy-progress-rotation var(--alloy-motion-surface-standard) linear infinite;
+}
+
+@keyframes alloy-progress-rotation {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.alloy-icon-button {
+  padding: 0;
+}
+
+.alloy-text-field {
+  display: grid;
+  gap: 6px;
+}
+
+.alloy-label {
+  color: var(--alloy-text-secondary);
+  font: inherit;
+  font-weight: 600;
+}
+
+.alloy-input {
+  appearance: none;
+  background: var(--alloy-well);
+  border: var(--alloy-focus-width) solid var(--alloy-text-secondary);
+  border-radius: 12px;
+  box-shadow: var(--alloy-material-concave-low-shadow);
+  color: var(--alloy-text-primary);
+  font: inherit;
+  min-block-size: var(--alloy-target-preferred);
+  min-inline-size: var(--alloy-target-minimum);
+  padding-block: 8px;
+  padding-inline: 12px;
+  transition-duration: var(--alloy-motion-feedback-standard);
+  transition-property: border-color, box-shadow;
+  transition-timing-function: var(--alloy-motion-easing-standard);
+}
+
+.alloy-text-field[data-invalid] .alloy-input {
+  border-color: var(--alloy-danger);
+}
+
+.alloy-input[data-disabled] {
+  box-shadow: none;
+  color: var(--alloy-text-disabled);
+}
+
+.alloy-field-error {
+  color: var(--alloy-text-primary);
+  font: inherit;
+}
+
+.alloy-switch {
+  align-items: center;
+  color: var(--alloy-text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 10px;
+  min-block-size: var(--alloy-target-preferred);
+  min-inline-size: var(--alloy-target-minimum);
+  position: relative;
+}
+
+.alloy-switch__track {
+  align-items: center;
+  background: var(--alloy-well);
+  border: var(--alloy-focus-width) solid var(--alloy-text-secondary);
+  border-radius: 999px;
+  box-shadow: var(--alloy-material-concave-low-shadow);
+  display: inline-flex;
+  inline-size: 44px;
+  min-block-size: 24px;
+  padding: 2px;
+  transition-duration: var(--alloy-motion-feedback-standard);
+  transition-property: background-color, border-color, box-shadow;
+  transition-timing-function: var(--alloy-motion-easing-standard);
+}
+
+.alloy-switch__thumb {
+  background: var(--alloy-text-primary);
+  border-radius: 50%;
+  block-size: 18px;
+  box-shadow: var(--alloy-material-convex-low-shadow);
+  inline-size: 18px;
+  transform: translateX(0);
+  transition: transform var(--alloy-motion-feedback-standard) var(--alloy-motion-easing-standard);
+}
+
+.alloy-switch[data-selected] .alloy-switch__track {
+  border-color: var(--alloy-selection);
+  box-shadow: var(--alloy-material-inlaid-shadow);
+}
+
+.alloy-switch[data-selected] .alloy-switch__thumb {
+  transform: translateX(18px);
+}
+
+.alloy-switch[data-disabled] {
+  color: var(--alloy-text-disabled);
+  cursor: default;
+}
+
+.alloy-switch[data-disabled] .alloy-switch__track,
+.alloy-switch[data-disabled] .alloy-switch__thumb {
+  box-shadow: none;
+}
+
+.alloy-status-lamp {
+  align-items: center;
+  color: var(--alloy-text-primary);
+  display: inline-flex;
+  gap: 8px;
+  min-block-size: var(--alloy-target-minimum);
+}
+
+.alloy-status-lamp__indicator {
+  background: var(--alloy-text-secondary);
+  block-size: 10px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  inline-size: 10px;
+}
+
+.alloy-status-lamp[data-alloy-tone="success"] .alloy-status-lamp__indicator {
+  background: var(--alloy-success);
+}
+
+.alloy-status-lamp[data-alloy-tone="warning"] .alloy-status-lamp__indicator {
+  background: var(--alloy-warning);
+}
+
+.alloy-status-lamp[data-alloy-tone="danger"] .alloy-status-lamp__indicator {
+  background: var(--alloy-danger);
+}
+
+.alloy-status-lamp[data-alloy-tone="ai"] .alloy-status-lamp__indicator {
+  background: var(--alloy-ai);
+}
+
+@media (forced-colors: active) {
+  .alloy-button,
+  .alloy-input,
+  .alloy-switch__track,
+  .alloy-switch__thumb,
+  .alloy-status-lamp__indicator {
+    background: Canvas;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+    color: CanvasText;
+    forced-color-adjust: auto;
+  }
+
+  .alloy-button[data-focus-visible],
+  .alloy-input[data-focus-visible],
+  .alloy-switch[data-focus-visible] {
+    outline-color: Highlight;
+  }
+
+  .alloy-switch[data-selected] .alloy-switch__track {
+    border-color: Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alloy-button,
+  .alloy-input,
+  .alloy-switch__track,
+  .alloy-switch__thumb {
+    transition-duration: var(--alloy-reduced-motion-duration);
+  }
+
+  .alloy-button__progress-indicator {
+    animation-duration: var(--alloy-reduced-motion-duration);
+    animation-iteration-count: var(--alloy-reduced-motion-iteration-count);
+    transform: none;
+  }
+}

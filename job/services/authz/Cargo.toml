@@ -1,0 +1,26 @@
+[package]
+name = "machina-authz"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[test]]
+name = "evaluator"
+path = "tests/evaluator.rs"
+
+[dependencies]
+cedar-policy = "=4.12.0"
+prost = "=0.14.4"
+rustls = { version = "=0.23.44", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "=1.53.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-postgres = "=0.7.18"
+tokio-postgres-rustls = { version = "=0.14.0", default-features = false, features = ["ring"] }
+tonic = "=0.14.6"
+tonic-prost = "=0.14.6"
+webpki-roots = "=1.0.9"
+
+[build-dependencies]
+protoc-bin-vendored = "=3.2.0"
+tonic-prost-build = "=0.14.6"

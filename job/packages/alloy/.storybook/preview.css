@@ -1,0 +1,16 @@
+html,
+body,
+#storybook-root {
+  min-block-size: 100%;
+}
+
+body.sb-show-main {
+  background: var(--alloy-chassis);
+  color: var(--alloy-text-primary);
+  font-family: var(--alloy-font-interface);
+  margin: 0;
+}
+
+#storybook-root {
+  min-block-size: 100vh;
+}

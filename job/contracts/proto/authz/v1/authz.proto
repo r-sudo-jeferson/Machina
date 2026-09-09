@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package machina.authz.v1;
+
+option go_package = "github.com/r-sudo-jeferson/Machina/job/gen/authz/v1;authzv1";
+
+service AuthorizationService {
+  rpc Decide(DecisionRequest) returns (DecisionResponse);
+}
+
+message DecisionRequest {
+  string subject_id = 1;
+  string tenant_id = 2;
+  string workspace_id = 3;
+  string action = 4;
+  string resource_type = 5;
+  string resource_id = 6;
+  uint64 required_policy_version = 7;
+  string correlation_id = 8;
+  map<string, string> context = 9;
+}
+
+message DecisionResponse {
+  string decision_id = 1;
+  bool allowed = 2;
+  uint64 policy_version = 3;
+  repeated string reason_codes = 4;
+  string diagnostic_ref = 5;
+  string policy_snapshot_hash = 6;
+}

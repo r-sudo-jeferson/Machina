@@ -1,0 +1,44 @@
+{
+  "alloy": {
+    "semantic": {
+      "focus": {"$type": "color", "$value": "{alloy.primitive.color.electricBlue}"},
+      "selection": {"$type": "color", "$value": "{alloy.primitive.color.fusionMagenta}"},
+      "ai": {"$type": "color", "$value": "{alloy.primitive.color.plasmaCyan}"},
+      "success": {"$type": "color", "$value": "{alloy.primitive.color.reactorGreen}"},
+      "warning": {"$type": "color", "$value": "{alloy.primitive.color.ionAmber}"},
+      "danger": {"$type": "color", "$value": "{alloy.primitive.color.signalRed}"},
+      "theme": {
+        "silver": {
+          "chassis": {"$type": "color", "$value": "{alloy.theme.silver.chassis}"},
+          "surface": {"$type": "color", "$value": "{alloy.theme.silver.litPlane}"},
+          "well": {"$type": "color", "$value": "{alloy.theme.silver.concaveWell}"},
+          "raised": {"$type": "color", "$value": "{alloy.theme.silver.litPlane}"},
+          "specularEdge": {"$type": "color", "$value": "{alloy.theme.silver.specularEdge}"},
+          "ambientShadow": {"$type": "color", "$value": "{alloy.theme.silver.ambientShadow}"},
+          "text": {
+            "primary": {"$type": "color", "$value": "{alloy.theme.silver.text.primary}"},
+            "secondary": {"$type": "color", "$value": "{alloy.theme.silver.text.secondary}"},
+            "disabled": {"$type": "color", "$value": "{alloy.theme.silver.text.disabled}"}
+          },
+          "icon": {"$type": "color", "$value": "{alloy.theme.silver.text.secondary}"},
+          "disabled": {"$type": "color", "$value": "{alloy.theme.silver.text.disabled}"}
+        },
+        "spaceBlack": {
+          "chassis": {"$type": "color", "$value": "{alloy.theme.spaceBlack.chassis}"},
+          "surface": {"$type": "color", "$value": "{alloy.theme.spaceBlack.litPlane}"},
+          "well": {"$type": "color", "$value": "{alloy.theme.spaceBlack.concaveWell}"},
+          "raised": {"$type": "color", "$value": "{alloy.theme.spaceBlack.litPlane}"},
+          "specularEdge": {"$type": "color", "$value": "{alloy.theme.spaceBlack.specularEdge}"},
+          "ambientShadow": {"$type": "color", "$value": "{alloy.theme.spaceBlack.ambientShadow}"},
+          "text": {
+            "primary": {"$type": "color", "$value": "{alloy.theme.spaceBlack.text.primary}"},
+            "secondary": {"$type": "color", "$value": "{alloy.theme.spaceBlack.text.secondary}"},
+            "disabled": {"$type": "color", "$value": "{alloy.theme.spaceBlack.text.disabled}"}
+          },
+          "icon": {"$type": "color", "$value": "{alloy.theme.spaceBlack.text.secondary}"},
+          "disabled": {"$type": "color", "$value": "{alloy.theme.spaceBlack.text.disabled}"}
+        }
+      }
+    }
+  }
+}
