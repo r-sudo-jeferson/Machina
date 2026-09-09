@@ -76,3 +76,7 @@ jobs:
       - name: Test Alloy package second pass
         working-directory: job
         run: pnpm --filter @machina/alloy test
+
+      - name: Build Alloy Storybook
+        working-directory: job
+        run: pnpm --filter @machina/alloy build-storybook

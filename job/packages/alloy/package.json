@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:tokens": "node scripts/build-tokens.mjs",
+    "build-storybook": "storybook build --config-dir .storybook --output-dir storybook-static",
     "test": "node --test test/*.test.mjs && vitest run",
     "typecheck": "tsc --project tsconfig.json --noEmit"
   },
