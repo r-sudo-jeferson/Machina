@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,10 +13,24 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	platformauthz "github.com/r-sudo-jeferson/Machina/job/internal/platform/authz"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
+
+type joinedErrorTenantSwitchExecutor struct {
+	next  tenantSwitchExecutor
+	cause error
+}
+
+func (e joinedErrorTenantSwitchExecutor) Switch(ctx context.Context, request TenantSwitchRequest) (TenantSwitchResult, error) {
+	result, err := e.next.Switch(ctx, request)
+	if err == nil {
+		return result, nil
+	}
+	return result, errors.Join(err, e.cause)
+}
 
 func TestTenantSwitchHTTPEmitsClosedRootSpan(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
@@ -226,5 +241,164 @@ func TestTenantSwitchTraceLinksHTTPAuthorizationTransactionAuditAndOutbox(t *tes
 	}
 	if uuidText(unit.claimParams.CorrelationID) != wantCorrelation || uuidText(unit.auditParams.CorrelationID) != wantCorrelation || uuidText(unit.outboxParams.CorrelationID) != wantCorrelation {
 		t.Fatalf("persisted correlation = claim:%s audit:%s outbox:%s", uuidText(unit.claimParams.CorrelationID), uuidText(unit.auditParams.CorrelationID), uuidText(unit.outboxParams.CorrelationID))
+	}
+}
+
+func TestTenantSwitchAuthorizationFailureTraceIsClosedAndRedacted(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		sentinel        string
+		authorizer      *recordingTenantSwitchAuthorizer
+		wantStatus      int
+		wantProblemCode string
+		wantOutcome     observability.Outcome
+	}{
+		{
+			name:     "cedar deny",
+			sentinel: "trace-secret-forbidden",
+			authorizer: &recordingTenantSwitchAuthorizer{decision: platformauthz.Decision{
+				DecisionID:    uuidText(tenantSwitchUUID(3)),
+				Allowed:       false,
+				PolicyVersion: 1,
+				ReasonCodes:   []string{"explicit_forbid"},
+				DiagnosticRef: "trace-secret-forbidden",
+			}},
+			wantStatus:      http.StatusForbidden,
+			wantProblemCode: "tenant_switch_forbidden",
+			wantOutcome:     observability.OutcomeDenied,
+		},
+		{
+			name:            "authorization unavailable",
+			sentinel:        "trace-secret-unavailable",
+			authorizer:      &recordingTenantSwitchAuthorizer{err: errors.New("trace-secret-unavailable")},
+			wantStatus:      http.StatusServiceUnavailable,
+			wantProblemCode: "tenant_switch_authorization_unavailable",
+			wantOutcome:     observability.OutcomeError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+			t.Cleanup(func() {
+				if err := provider.Shutdown(context.Background()); err != nil {
+					t.Errorf("TracerProvider.Shutdown() error = %v", err)
+				}
+			})
+			tracing, err := newTenantSwitchTracing(provider.Tracer("machina-tenant-switch-redaction-test"))
+			if err != nil {
+				t.Fatalf("newTenantSwitchTracing() error = %v", err)
+			}
+
+			unit := claimedTenantSwitchUnit()
+			coordinator, err := newTenantSwitchCoordinatorWithTracing(func(ctx context.Context, fn func(context.Context, tenantSwitchUnit) error) error {
+				return fn(ctx, unit)
+			}, tc.authorizer, tracing)
+			if err != nil {
+				t.Fatalf("newTenantSwitchCoordinatorWithTracing() error = %v", err)
+			}
+			metrics, _ := tenantSwitchHTTPTestMetrics(t)
+			handler, err := newTenantSwitchHTTPHandlerWithTracing(
+				joinedErrorTenantSwitchExecutor{next: coordinator, cause: errors.New(tc.sentinel)},
+				metrics,
+				tracing,
+				time.Now,
+				func() (pgtype.UUID, error) { return tenantSwitchUUID(3), nil },
+			)
+			if err != nil {
+				t.Fatalf("newTenantSwitchHTTPHandlerWithTracing() error = %v", err)
+			}
+
+			request := tenantSwitchHTTPRequest()
+			request.Body = io.NopCloser(strings.NewReader(`{"tenant_id":"00000000-0000-0000-0000-000000000002"}`))
+			recorder := httptest.NewRecorder()
+			tenantSwitchHTTPMiddleware(t, handler).ServeHTTP(recorder, request)
+
+			if recorder.Code != tc.wantStatus || recorder.Header().Get("Content-Type") != "application/problem+json" {
+				t.Fatalf("problem response = status:%d content_type:%q body:%s", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.Bytes())
+			}
+			if recorder.Header().Get("Cache-Control") != "no-store" || recorder.Header().Get("ETag") != "" || len(recorder.Result().Cookies()) != 0 {
+				t.Fatalf("failure response state = cache:%q etag:%q cookies:%#v", recorder.Header().Get("Cache-Control"), recorder.Header().Get("ETag"), recorder.Result().Cookies())
+			}
+			var problem map[string]any
+			if err := json.Unmarshal(recorder.Body.Bytes(), &problem); err != nil {
+				t.Fatalf("problem JSON = %v", err)
+			}
+			if problem["code"] != tc.wantProblemCode || strings.Contains(recorder.Body.String(), tc.sentinel) {
+				t.Fatalf("problem = %#v, want code %q without internal cause", problem, tc.wantProblemCode)
+			}
+			if unit.claimCalls != 0 || unit.switchCalls != 0 || unit.completeCalls != 0 || unit.finishCalls != 0 || unit.auditCalls != 0 || unit.outboxCalls != 0 {
+				t.Fatalf("authorization failure reached mutation: claim=%d switch=%d complete=%d finish=%d audit=%d outbox=%d", unit.claimCalls, unit.switchCalls, unit.completeCalls, unit.finishCalls, unit.auditCalls, unit.outboxCalls)
+			}
+
+			spans := exporter.GetSpans()
+			assertTenantSwitchAuthorizationFailureSpans(t, spans, tc.wantOutcome, tc.sentinel)
+		})
+	}
+}
+
+func assertTenantSwitchAuthorizationFailureSpans(t *testing.T, spans tracetest.SpanStubs, wantOutcome observability.Outcome, sentinel string) {
+	t.Helper()
+	if len(spans) != 3 {
+		t.Fatalf("exported spans = %d, want HTTP, transaction, and authorization only", len(spans))
+	}
+	wantNames := map[string]bool{
+		"tenant.switch.http":          false,
+		"tenant.switch.transaction":   false,
+		"tenant.switch.authorization": false,
+	}
+	for _, span := range spans {
+		if _, allowed := wantNames[span.Name]; !allowed {
+			t.Fatalf("authorization failure exported forbidden span %q", span.Name)
+		}
+		if wantNames[span.Name] {
+			t.Fatalf("authorization failure exported duplicate span %q", span.Name)
+		}
+		wantNames[span.Name] = true
+		if strings.Contains(span.Name, sentinel) || strings.Contains(span.Status.Description, sentinel) {
+			t.Fatalf("%s leaked sentinel in name or status: %#v", span.Name, span.Status)
+		}
+		if span.Status.Description != "" {
+			t.Fatalf("%s status description = %q, want empty", span.Name, span.Status.Description)
+		}
+		attributes := make(map[string]string, len(span.Attributes))
+		for _, item := range span.Attributes {
+			key := string(item.Key)
+			value := fmt.Sprint(item.Value.AsInterface())
+			if strings.Contains(key, sentinel) || strings.Contains(value, sentinel) {
+				t.Fatalf("%s leaked sentinel in attribute %q=%q", span.Name, key, value)
+			}
+			lowerAttribute := strings.ToLower(key + "=" + value)
+			for _, sensitive := range []string{"subject", "tenant_id", "workspace", "policy", "idempotency"} {
+				if strings.Contains(lowerAttribute, sensitive) {
+					t.Fatalf("%s exported sensitive attribute %q=%q", span.Name, key, value)
+				}
+			}
+			attributes[key] = value
+		}
+		if len(attributes) != 2 || attributes[tenantSwitchTraceCorrelationKey] != uuidText(tenantSwitchUUID(3)) || attributes[observability.MetricOutcome] != string(wantOutcome) {
+			t.Fatalf("%s attributes = %#v, want only correlation and outcome %q", span.Name, attributes, wantOutcome)
+		}
+		for _, event := range span.Events {
+			if strings.Contains(event.Name, sentinel) {
+				t.Fatalf("%s leaked sentinel in event name %q", span.Name, event.Name)
+			}
+			for _, item := range event.Attributes {
+				if strings.Contains(string(item.Key), sentinel) || strings.Contains(fmt.Sprint(item.Value.AsInterface()), sentinel) {
+					t.Fatalf("%s leaked sentinel in event attribute %#v", span.Name, item)
+				}
+			}
+		}
+		for _, link := range span.Links {
+			for _, item := range link.Attributes {
+				if strings.Contains(string(item.Key), sentinel) || strings.Contains(fmt.Sprint(item.Value.AsInterface()), sentinel) {
+					t.Fatalf("%s leaked sentinel in link attribute %#v", span.Name, item)
+				}
+			}
+		}
+	}
+	for name, seen := range wantNames {
+		if !seen {
+			t.Fatalf("authorization failure missing span %q", name)
+		}
 	}
 }
