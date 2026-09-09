@@ -7,7 +7,7 @@ describe('Machina entry journey', () => {
     render(<MachinaEntryApp />);
 
     const status = screen.getByRole('status');
-    expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(status).toHaveTextContent(/preparing your secure workspace/i);
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.textContent).toMatch(/preparing your secure workspace/i);
   });
 });
