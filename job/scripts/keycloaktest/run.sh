@@ -5,6 +5,7 @@ readonly REALM_FILE='deploy/keycloak/machina-preview-realm.json'
 readonly REDIRECT_URI='http://127.0.0.1:18081/auth/callback'
 readonly DISCOVERY_URL='http://127.0.0.1:18080/realms/machina-preview/.well-known/openid-configuration'
 readonly CONTAINER="machina-keycloak-${GITHUB_RUN_ID:-local}-$$"
+readonly ADMIN_USERNAME='machina-ci-admin'
 
 fail() {
   printf 'keycloaktest: %s\n' "$*" >&2
@@ -45,7 +46,7 @@ docker run --detach --rm \
   --name "$CONTAINER" \
   --memory 1g \
   --publish 127.0.0.1:18080:8080 \
-  --env KC_BOOTSTRAP_ADMIN_USERNAME=machina-ci-admin \
+  --env KC_BOOTSTRAP_ADMIN_USERNAME="$ADMIN_USERNAME" \
   --env KC_BOOTSTRAP_ADMIN_PASSWORD="$admin_password" \
   --env KC_HOSTNAME=http://127.0.0.1:18080 \
   --env MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
@@ -73,6 +74,8 @@ fi
 
 MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
-  go test -count=1 -run '^TestKeycloakOIDCProviderIntegration$' -v ./internal/platform/identity
+MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
+MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
+  go test -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$' -v ./internal/platform/identity
 
-printf 'keycloaktest: locked Keycloak 26.7.3 OIDC discovery boundary passed\n'
+printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code boundary passed\n'
