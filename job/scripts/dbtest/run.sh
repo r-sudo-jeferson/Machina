@@ -34,6 +34,7 @@ readonly MIGRATIONS=(
   db/migrations/0014_session_generation.sql
   db/migrations/0015_tenant_switch_idempotency_scope.sql
   db/migrations/0016_tenant_switch_response_etag.sql
+  db/migrations/0017_audit_integrity_checkpoints.sql
 )
 
 fail() {
@@ -117,7 +118,7 @@ expect_equals '0' "$owner_violations" 'Slice tables are not owned exclusively by
 rls_violations="$(query_as postgres "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname IN ('iam','authz','audit','ops','ai') AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity) AND (n.nspname,c.relname) NOT IN (('iam','subjects'),('iam','sessions'))")"
 expect_equals '0' "$rls_violations" 'tenant tables are missing ENABLE/FORCE ROW LEVEL SECURITY'
 
-tenant_key_violations="$(query_as postgres "WITH expected(schema_name, table_name) AS (VALUES ('iam','workspaces'),('iam','memberships'),('iam','invitations'),('iam','preferences'),('authz','policy_snapshots'),('audit','events'),('ops','outbox'),('ops','idempotency_keys'),('ai','interactions')) SELECT count(*) FROM expected e WHERE NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace CROSS JOIN LATERAL unnest(c.conkey) AS key(attnum) JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=key.attnum WHERE c.contype='p' AND n.nspname=e.schema_name AND t.relname=e.table_name AND a.attname='tenant_id')")"
+tenant_key_violations="$(query_as postgres "WITH expected(schema_name, table_name) AS (VALUES ('iam','workspaces'),('iam','memberships'),('iam','invitations'),('iam','preferences'),('authz','policy_snapshots'),('audit','events'),('audit','chain_heads'),('audit','event_chain'),('audit','checkpoints'),('ops','outbox'),('ops','idempotency_keys'),('ai','interactions')) SELECT count(*) FROM expected e WHERE NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace CROSS JOIN LATERAL unnest(c.conkey) AS key(attnum) JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=key.attnum WHERE c.contype='p' AND n.nspname=e.schema_name AND t.relname=e.table_name AND a.attname='tenant_id')")"
 expect_equals '0' "$tenant_key_violations" 'tenant-owned tables have primary keys not qualified by tenant_id'
 
 printf 'dbtest: introspection runtime_role_flags=%s owner_violations=%s rls_violations=%s tenant_key_violations=%s\n' \
