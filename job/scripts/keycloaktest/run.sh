@@ -59,8 +59,6 @@ client_secret="$(openssl rand -hex 32)"
 admin_password="$(openssl rand -hex 32)"
 [[ ${#client_secret} -eq 64 && ${#admin_password} -eq 64 ]] || fail 'ephemeral credential generation failed'
 
-# The exact tag+digest is the executable identity. Pulling this reference must
-# fail if the registry no longer maps the selected bytes to the lock.
 docker pull "$image_ref" >/dev/null
 repo_digests="$(docker image inspect "$image_ref" --format '{{join .RepoDigests "\n"}}')"
 grep -Fq "@${expected_digest}" <<<"$repo_digests" || fail 'pulled Keycloak image does not expose the expected RepoDigest'
@@ -89,8 +87,6 @@ wait_for_keycloak_ready 'startup'
 container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"
 [[ -n "$container_id" ]] || fail 'Keycloak container identity is empty'
 
-# Concurrent application sessions are proven against the same PostgreSQL 18.6
-# identity/session kernel used by the database harness, exposed only on loopback.
 docker pull "$POSTGRES_IMAGE" >/dev/null
 docker run --detach --rm \
   --name "$POSTGRES_CONTAINER" \
@@ -133,10 +129,8 @@ MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
 MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
 MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
 MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
-  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL)$' -v ./internal/platform/identity
+  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL)$' -v ./internal/platform/identity
 
-# Stop the exact provider container and prove discovery fails closed rather than
-# silently accepting a stale or synthetic provider boundary.
 docker stop --timeout 15 "$CONTAINER" >/dev/null
 if curl --fail --silent --show-error "$DISCOVERY_URL" >/dev/null 2>&1; then
   fail 'Keycloak OIDC discovery remained reachable after the provider container stopped'
@@ -146,15 +140,11 @@ MACHINA_EXPECT_KEYCLOAK_UNAVAILABLE=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
   go test -race -count=1 -run '^TestKeycloakOIDCProviderUnavailableIntegration$' -v ./internal/platform/identity
 
-# Restart the same container identity; recreating a new container would not
-# prove dependency restart recovery for the already-selected provider instance.
 docker start "$CONTAINER" >/dev/null
 restarted_container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"
 [[ "$restarted_container_id" == "$container_id" ]] || fail 'Keycloak restart changed container identity'
 wait_for_keycloak_ready 'restart'
 
-# Re-run real discovery and Authorization Code + PKCE against the restarted
-# provider. These tests create fresh ephemeral user/login material.
 MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
 MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
