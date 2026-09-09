@@ -45,3 +45,7 @@ jobs:
       - name: Verify Keycloak preview configuration contract
         working-directory: job
         run: go test -count=1 ./scripts/keycloaktest
+
+      - name: Verify real Keycloak OIDC provider boundary
+        working-directory: job
+        run: MACHINA_RUN_KEYCLOAK_INTEGRATION=1 go test -count=1 -run '^TestKeycloakOIDCProviderIntegration$' -v ./internal/platform/identity
