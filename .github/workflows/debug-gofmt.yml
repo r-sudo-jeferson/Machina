@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: gofmt -d job/internal/platform/identity/tenant_switch_http_test.go
+      - run: gofmt -d job/internal/platform/identity/keycloak_authorization_code_integration_test.go
