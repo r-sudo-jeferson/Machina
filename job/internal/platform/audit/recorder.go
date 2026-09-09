@@ -31,7 +31,6 @@ type Event struct {
 	PolicyVersion  int64
 	CorrelationID  pgtype.UUID
 	SafeMetadata   SafeMetadata
-	PreviousHash   []byte
 	OccurredAt     time.Time
 }
 
@@ -94,9 +93,6 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 		event.OccurredAt.IsZero() {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
-	if len(event.PreviousHash) != 0 && len(event.PreviousHash) != sha256.Size {
-		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
-	}
 	metadata, err := event.SafeMetadata.marshalForDecision(event.Decision)
 	if err != nil || !json.Valid(metadata) {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
@@ -117,7 +113,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 		TenantID: uuidText(event.TenantID), ID: uuidText(event.ID), ActorSubjectID: uuidText(event.ActorSubjectID),
 		EventType: event.EventType, Action: event.Action, Decision: event.Decision, PolicyVersion: event.PolicyVersion,
 		CorrelationID: uuidText(event.CorrelationID), SafeMetadata: metadata,
-		PreviousHash: hex.EncodeToString(event.PreviousHash), OccurredAt: event.OccurredAt.UTC().Format(time.RFC3339Nano),
+		PreviousHash: "", OccurredAt: event.OccurredAt.UTC().Format(time.RFC3339Nano),
 	}
 	canonical, err := json.Marshal(hashInput)
 	if err != nil {
@@ -128,7 +124,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 		TenantID: event.TenantID, EventID: event.ID, ActorSubjectID: event.ActorSubjectID,
 		EventType: event.EventType, Action: event.Action, Decision: event.Decision,
 		PolicyVersion: event.PolicyVersion, CorrelationID: event.CorrelationID, SafeMetadata: metadata,
-		PreviousHash: append([]byte(nil), event.PreviousHash...), EventHash: sum[:],
+		PreviousHash: nil, EventHash: sum[:],
 		OccurredAt: pgtype.Timestamptz{Time: event.OccurredAt.UTC(), Valid: true},
 	}, nil
 }
