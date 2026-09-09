@@ -128,16 +128,16 @@ for migration in "${migrations[@]}"; do
   docker exec -i "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_MIGRATOR_ROLE" -d "$POSTGRES_DB" < "$migration"
 done
 
-# The migrator URL is exposed only to this integration test process so it can
-# deterministically age a fixture row. Application session reads and rotation
-# remain bound to the separate non-owner machina_runtime connection.
+# The migrator URL is exposed only to this bounded integration-test process so
+# tests can create or age deterministic fixture rows. Product reads, session
+# mutation and invitation acceptance remain bound to machina_runtime.
 MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
 MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
 MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
 MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
 MACHINA_KEYCLOAK_MIGRATOR_DATABASE_URL="$POSTGRES_MIGRATOR_DATABASE_URL" \
-  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL|ExpiredIDTokenIntegration)$' -v ./internal/platform/identity
+  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|InvitedUserAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL|ExpiredIDTokenIntegration)$' -v ./internal/platform/identity
 
 # Prove provider outage and recovery by stopping then starting the exact same
 # container identity.
@@ -181,4 +181,4 @@ MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
   go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$' -v ./internal/platform/identity
 
 printf 'keycloaktest: provider recreated from versioned realm template\n'
-printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session outage-restart-recreate boundary passed\n'
+printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session/invitation outage-restart-recreate boundary passed\n'
