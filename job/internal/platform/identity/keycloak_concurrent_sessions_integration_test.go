@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -19,7 +18,6 @@ const keycloakIntegrationDatabaseURLEnv = "MACHINA_KEYCLOAK_DATABASE_URL"
 type keycloakConcurrentSessionResult struct {
 	identity VerifiedOIDCIdentity
 	session  AuthenticatedSession
-	err      error
 }
 
 func TestKeycloakOIDCConcurrentSessionsAgainstPostgreSQL(t *testing.T) {
@@ -94,48 +92,33 @@ func TestKeycloakOIDCConcurrentSessionsAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("create authenticated session service: %v", err)
 	}
 
-	start := make(chan struct{})
-	results := make(chan keycloakConcurrentSessionResult, 2)
-	var waitGroup sync.WaitGroup
-	for range 2 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
-			<-start
-
-			authorizationURL, err := flow.Begin(ctx, keycloakIntegrationPostLoginRedirect)
-			if err != nil {
-				results <- keycloakConcurrentSessionResult{err: err}
-				return
-			}
-			callback, err := completeKeycloakBrowserLogin(ctx, authorizationURL, username, userPassword)
-			if err != nil {
-				results <- keycloakConcurrentSessionResult{err: err}
-				return
-			}
-			completed, err := flow.Complete(ctx, callback.state, callback.code)
-			if err != nil {
-				results <- keycloakConcurrentSessionResult{err: err}
-				return
-			}
-			authenticatedSession, err := sessionService.Establish(ctx, completed.Identity)
-			results <- keycloakConcurrentSessionResult{
-				identity: completed.Identity,
-				session:  authenticatedSession,
-				err:      err,
-			}
-		}()
-	}
-	close(start)
-	waitGroup.Wait()
-	close(results)
-
-	completed := make([]keycloakConcurrentSessionResult, 0, 2)
-	for result := range results {
-		if result.err != nil {
-			t.Fatalf("concurrent Keycloak/session establishment failed: %v", result.err)
+	// Keep both OIDC attempts alive while avoiding overlapping password checks,
+	// which Keycloak's brute-force protector intentionally guards against per user.
+	authorizationURLs := make([]string, 2)
+	for index := range authorizationURLs {
+		authorizationURLs[index], err = flow.Begin(ctx, keycloakIntegrationPostLoginRedirect)
+		if err != nil {
+			t.Fatalf("begin concurrent OIDC authorization %d: %v", index+1, err)
 		}
-		completed = append(completed, result)
+	}
+	completed := make([]keycloakConcurrentSessionResult, 0, 2)
+	for index, authorizationURL := range authorizationURLs {
+		callback, err := completeKeycloakBrowserLogin(ctx, authorizationURL, username, userPassword)
+		if err != nil {
+			t.Fatalf("complete concurrent browser login %d against Keycloak: %v", index+1, err)
+		}
+		authorization, err := flow.Complete(ctx, callback.state, callback.code)
+		if err != nil {
+			t.Fatalf("complete concurrent OIDC authorization %d: %v", index+1, err)
+		}
+		authenticatedSession, err := sessionService.Establish(ctx, authorization.Identity)
+		if err != nil {
+			t.Fatalf("establish concurrent application session %d: %v", index+1, err)
+		}
+		completed = append(completed, keycloakConcurrentSessionResult{
+			identity: authorization.Identity,
+			session:  authenticatedSession,
+		})
 	}
 	if len(completed) != 2 {
 		t.Fatalf("concurrent session results = %d, want 2", len(completed))
