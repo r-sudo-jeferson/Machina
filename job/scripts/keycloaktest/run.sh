@@ -6,6 +6,12 @@ readonly REDIRECT_URI='http://127.0.0.1:18081/auth/callback'
 readonly DISCOVERY_URL='http://127.0.0.1:18080/realms/machina-preview/.well-known/openid-configuration'
 readonly CONTAINER="machina-keycloak-${GITHUB_RUN_ID:-local}-$$"
 readonly ADMIN_USERNAME='machina-ci-admin'
+readonly POSTGRES_IMAGE='postgres:18.6-bookworm@sha256:1c59e2c3c818eaa0f0628f695b36e7c9e362d6b219b36a54a32df645cbd7e1af'
+readonly POSTGRES_CONTAINER="machina-keycloak-pg-${GITHUB_RUN_ID:-local}-$$"
+readonly POSTGRES_DB='machina_test'
+readonly POSTGRES_MIGRATOR_ROLE='machina_migrator'
+readonly POSTGRES_RUNTIME_ROLE='machina_runtime'
+readonly POSTGRES_DATABASE_URL="postgresql://${POSTGRES_RUNTIME_ROLE}@127.0.0.1:15432/${POSTGRES_DB}?sslmode=disable&connect_timeout=2"
 
 fail() {
   printf 'keycloaktest: %s\n' "$*" >&2
@@ -14,9 +20,11 @@ fail() {
 
 cleanup() {
   docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
+command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v docker >/dev/null 2>&1 || fail 'docker is required'
 command -v go >/dev/null 2>&1 || fail 'Go is required'
 command -v openssl >/dev/null 2>&1 || fail 'openssl is required for ephemeral credentials'
@@ -72,10 +80,50 @@ if [[ "$ready" != '1' ]]; then
   fail 'Keycloak OIDC discovery did not become ready within the bounded startup window'
 fi
 
+# Concurrent application sessions are proven against the same PostgreSQL 18.6
+# identity/session kernel used by the database harness, exposed only on loopback.
+docker pull "$POSTGRES_IMAGE" >/dev/null
+docker run --detach --rm \
+  --name "$POSTGRES_CONTAINER" \
+  --memory 512m \
+  --publish 127.0.0.1:15432:5432 \
+  --env POSTGRES_HOST_AUTH_METHOD=trust \
+  "$POSTGRES_IMAGE" >/dev/null
+
+postgres_ready=0
+for _ in $(seq 1 60); do
+  if docker exec "$POSTGRES_CONTAINER" pg_isready -q -U postgres -d postgres; then
+    postgres_ready=1
+    break
+  fi
+  if ! docker inspect "$POSTGRES_CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -qx true; then
+    docker logs "$POSTGRES_CONTAINER" >&2 || true
+    fail 'PostgreSQL exited before becoming ready'
+  fi
+  sleep 1
+done
+[[ "$postgres_ready" == '1' ]] || fail 'PostgreSQL did not become ready within the bounded startup window'
+
+postgres_version_num="$(docker exec "$POSTGRES_CONTAINER" psql -XAtq -U postgres -d postgres -c 'SHOW server_version_num')"
+[[ "$postgres_version_num" == '180006' ]] || fail "unexpected PostgreSQL server_version_num: $postgres_version_num"
+
+docker exec -i "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
+CREATE ROLE ${POSTGRES_MIGRATOR_ROLE} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+CREATE ROLE ${POSTGRES_RUNTIME_ROLE} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+CREATE DATABASE ${POSTGRES_DB} OWNER ${POSTGRES_MIGRATOR_ROLE};
+SQL
+
+migrations=(db/migrations/[0-9][0-9][0-9][0-9]_*.sql)
+[[ ${#migrations[@]} -gt 0 && -f "${migrations[0]}" ]] || fail 'database migrations are missing'
+for migration in "${migrations[@]}"; do
+  docker exec -i "$POSTGRES_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_MIGRATOR_ROLE" -d "$POSTGRES_DB" < "$migration"
+done
+
 MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
 MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
 MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
-  go test -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$' -v ./internal/platform/identity
+MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
+  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL)$' -v ./internal/platform/identity
 
-printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code boundary passed\n'
+printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session boundary passed\n'
