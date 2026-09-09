@@ -206,4 +206,29 @@ describe('createBrowserEntryGateway', () => {
     expect(session.active.tenant.slug).toBe('globex');
     expect(session.active.workspace.slug).toBe('ops');
   });
+
+  it('fails closed before network I/O when the CSRF token is unavailable', async () => {
+    let fetchCalls = 0;
+    const fetcher: typeof fetch = async () => {
+      fetchCalls += 1;
+      return jsonResponse(sessionPayload());
+    };
+    const gateway = createBrowserEntryGateway(fetcher, {
+      readCSRFToken: () => undefined,
+    });
+
+    const error = await gateway
+      .switchTenant({
+        tenantId: '00000000-0000-4000-8000-000000000011',
+        idempotencyKey: 'tenant-switch-operation-0002',
+      })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+    expect(fetchCalls).toBe(0);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/csrf|secure request token/i);
+  });
 });
