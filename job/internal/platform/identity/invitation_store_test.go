@@ -71,12 +71,12 @@ func TestInvitationStoreAcceptRejectsInvalidInputBeforeDatabase(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t := tt
-		t.Run(tt.name, func(t *testing.T) {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			queries := &recordingInvitationQueries{}
 			store := NewInvitationStore(queries)
-			if _, err := store.Accept(context.Background(), tt.token, tt.subjectID); err == nil {
+			if _, err := store.Accept(context.Background(), tc.token, tc.subjectID); err == nil {
 				t.Fatal("Accept() accepted invalid invitation input")
 			}
 			if queries.acceptCalls != 0 {
