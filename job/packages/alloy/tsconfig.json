@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "ESNext.Disposable", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
@@ -13,7 +13,8 @@
     "verbatimModuleSyntax": true,
     "jsx": "react-jsx",
     "noEmit": true,
-    "types": ["react"]
+    "skipLibCheck": true,
+    "types": ["node", "react"]
   },
   "include": [
     "generated/**/*.ts",
