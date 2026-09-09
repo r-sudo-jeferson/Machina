@@ -29,7 +29,7 @@
 
 - Create `job/internal/platform/identity/tenant_switch_trace.go`: closed tracing adapter, span names, correlation formatting, and outcome finalization without raw errors.
 - Create `job/internal/platform/identity/tenant_switch_trace_test.go`: in-memory span assertions for success, deny, unavailable, parentage, correlation, and redaction.
-- Modify `job/internal/platform/identity/tenant_switch_http.go`: inject/start the HTTP span after correlation generation and pass its context to the coordinator.
+- Modify `job/internal/platform/identity/tenant_switch_http.go`: construct/inject the closed adapter, start the HTTP span after correlation generation, and pass its context to the coordinator.
 - Modify `job/internal/platform/identity/idempotent_tenant_switch.go`: inject/start transaction, audit, and outbox spans without changing call order.
 - Modify `job/internal/platform/identity/tenant_switch_authorization.go`: wrap the existing Cedar call in the authorization span without changing request fields or decisions.
 - Modify `job/go.mod` and `job/go.sum` only as produced by `go mod tidy` for direct test use of `otel/sdk/trace`.
@@ -41,6 +41,7 @@
 **Files:**
 - Create: `job/internal/platform/identity/tenant_switch_trace.go`
 - Create: `job/internal/platform/identity/tenant_switch_trace_test.go`
+- Modify: `job/internal/platform/identity/tenant_switch_http.go`
 - Modify: `job/go.mod`
 - Modify: `job/go.sum`
 
@@ -51,36 +52,31 @@
 - Produces `(*tenantSwitchTracing).start(context.Context, tenantSwitchSpanName, pgtype.UUID) (context.Context, trace.Span)`.
 - Produces `finishTenantSwitchSpan(trace.Span, observability.Outcome)`.
 
-- [ ] **Step 1: Write the failing adapter tests**
+- [ ] **Step 1: Write the failing HTTP root-span test against existing constructors**
 
-Create tests using a synchronous in-memory exporter:
+Use a synchronous in-memory exporter and temporarily install its provider as the OpenTelemetry global before constructing the existing handler. Restore the previous global provider in cleanup. Exercise a valid tenant-switch HTTP request with an existing recording switcher that captures the server-generated correlation ID and returns an explicit forbidden result. Do not reference any not-yet-defined tracing production symbol in this RED commit.
 
 ```go
 exporter := tracetest.NewInMemoryExporter()
 provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
 t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
-tracing, err := newTenantSwitchTracing(provider.Tracer(tenantSwitchTraceInstrumentationName))
-if err != nil {
-	t.Fatalf("newTenantSwitchTracing() error = %v", err)
-}
-
-ctx, span := tracing.start(context.Background(), tenantSwitchSpanAuthorization, tenantSwitchUUID(0x44))
-finishTenantSwitchSpan(span, observability.OutcomeDenied)
 spans := exporter.GetSpans()
-if len(spans) != 1 || spans[0].Name != "tenant.switch.authorization" {
+if len(spans) != 1 || spans[0].Name != "tenant.switch.http" {
 	t.Fatalf("spans = %#v", spans)
 }
 ```
 
-Assert the span has only `machina.correlation_id` and `machina.outcome`; the correlation value is the canonical UUID from the server-owned `pgtype.UUID`; the outcome is one of the five existing closed outcomes. Require a nil tracer to be rejected by the constructor; nil context and an unknown span name to return a no-op span; invalid correlation to omit `machina.correlation_id`; and nil spans or invalid outcomes to finish without an exportable dynamic attribute or panic.
+Require HTTP 403 and the existing `tenant_switch_forbidden` RFC 9457 response without cookies or ETag. Assert one root span with only `machina.correlation_id` and `machina.outcome`; its correlation value equals the UUID captured from the server-owned request and its outcome is `denied`.
 
-- [ ] **Step 2: Publish only the adapter tests and observe exact-SHA RED**
+- [ ] **Step 2: Publish only the root-span test and observe exact-SHA behavioral RED**
 
-Require `go mod tidy -diff`, repository-wide gofmt, and `go vet ./...` to succeed before the Go test failure. The valid RED is missing tracing types/functions, not an import, module, format, fixture, or harness failure.
+Require `go mod tidy -diff`, repository-wide gofmt, `go vet ./...`, and all pre-existing tests to succeed before the new assertion. The valid RED is exactly zero exported spans where one closed HTTP span is required; a compilation, import, module, format, fixture, or harness failure is invalid.
 
 - [ ] **Step 3: Implement the minimum closed adapter**
 
-Use package-private constants and do not accept arbitrary attribute keys or values:
+Use package-private constants and do not accept arbitrary attribute keys or values. `NewTenantSwitchHTTPHandler` and the existing private constructor must acquire the global tracer only during construction; add a further package-private tracing-aware constructor for deterministic tests without changing either existing signature. Start the HTTP span only after the correlation ID is generated, pass its context to `Switch`, and finish it on every result branch with the same closed outcome already used by metrics.
+
+The adapter itself is:
 
 ```go
 const (
@@ -119,11 +115,11 @@ func finishTenantSwitchSpan(span trace.Span, outcome observability.Outcome) {
 }
 ```
 
-`tenantSwitchNoopSpan` must use OpenTelemetry's no-op tracer provider and return `context.Background()` plus a non-nil no-op span. `validTenantSwitchSpanName` must enumerate exactly the five constants above; `validTenantSwitchTraceOutcome` must enumerate exactly the five existing observability outcomes. Validate constructor inputs and keep the name/outcome arguments private typed enums so no request value can become a span name or attribute. Do not record error values, events, stacks, tenant coordinates, policy hashes, or diagnostic references.
+`tenantSwitchNoopSpan` must use OpenTelemetry's no-op tracer provider and return `context.Background()` plus a non-nil no-op span. `validTenantSwitchSpanName` must enumerate exactly the five constants above; `validTenantSwitchTraceOutcome` must enumerate exactly the five existing observability outcomes. Validate constructor inputs and keep the name/outcome arguments private typed enums so no request value can become a span name or attribute. Add direct GREEN assertions for nil tracer rejection, nil context/unknown-name no-op behavior, invalid-correlation omission, and nil-span/invalid-outcome safety. Do not record error values, events, stacks, tenant coordinates, policy hashes, or diagnostic references.
 
 - [ ] **Step 4: Verify adapter GREEN on the exact SHA**
 
-Require the complete Go workflow, including the existing audit/identity/observability race command. Inspect exported spans directly; a passing no-op-only test is insufficient.
+Require the complete Go workflow, including the existing audit/identity/observability race command. Inspect the exported HTTP span directly; a passing no-op-only test is insufficient.
 
 ### Task 2: Link HTTP, Authorization, Transaction, Audit, and Outbox
 
@@ -134,14 +130,14 @@ Require the complete Go workflow, including the existing audit/identity/observab
 - Modify: `job/internal/platform/identity/tenant_switch_trace_test.go`
 
 **Interfaces:**
-- `TenantSwitchHTTPHandler` and `TenantSwitchCoordinator` gain package-private `tracing *tenantSwitchTracing` fields.
+- `TenantSwitchHTTPHandler` already has the package-private `tracing *tenantSwitchTracing` field from Task 1; `TenantSwitchCoordinator` gains the same field here.
 - Existing public constructor signatures remain unchanged.
-- Produce private `newTenantSwitchHTTPHandlerWithTracing` and `newTenantSwitchCoordinatorWithTracing` constructors for deterministic tests.
-- `TenantSwitchHTTPHandler` gains a package-private correlation generator initialized to `newTenantSwitchUUID`; production behavior stays cryptographically random.
+- Consume the private `newTenantSwitchHTTPHandlerWithTracing` from Task 1 and produce `newTenantSwitchCoordinatorWithTracing` for deterministic tests.
+- `TenantSwitchHTTPHandler` already has a package-private correlation generator initialized to `newTenantSwitchUUID`; production behavior stays cryptographically random.
 
 - [ ] **Step 1: Write the full-chain failing test**
 
-Use the existing HTTP middleware/request helpers, `recordingTenantSwitchUnit`, and allow authorizer. Configure the recording unit so its claim returns the correlation received in `ClaimIdempotencyKeyParams`. Inject the same `tenantSwitchTracing` into handler and coordinator, then send one valid POST.
+Use the existing HTTP middleware/request helpers, `recordingTenantSwitchUnit`, and allow authorizer. Configure the recording unit so its claim returns the correlation received in `ClaimIdempotencyKeyParams`. Inject the same `tenantSwitchTracing` from Task 1 into handler and coordinator, then send one valid POST.
 
 Assert:
 
