@@ -4,17 +4,17 @@
 
 **Goal:** Deliver MCH-S001@1.0.0 as a complete vertical journey: secure identity, tenant/workspace establishment, independently enforced tenant isolation and authorization, accessible Machina Alloy shell, and real read-only ASK AI First context with citations.
 
-**Architecture:** A Go modular monolith provides BFF/API and worker responsibilities, PostgreSQL 18 is the system of record with forced RLS, a narrow Rust Cedar authorization service is the policy boundary, Keycloak owns authentication, and React 19.2/Vite 8.1 provides the web experience. The slice is constructed in GitHub under `/job`, verified against the canonical GitLab base `0ad4f8d69846818792853586fdded0a8636e42e996c531849483c7d53908efcd`, then frozen and promoted exactly after GNT-MCH-S001-001 PASS.
+**Architecture:** A Go modular monolith provides BFF/API and worker responsibilities, PostgreSQL 18 is the system of record with forced RLS, a narrow Rust Cedar authorization service is the policy boundary, Keycloak owns authentication, and React 19.2/Vite 8.1 provides the web experience. The slice is constructed in GitHub under `/job`, verified against the Founder-authorized canonical GitLab base `fa55084ea42a40b35d80d081e658c502df709b37e61f75dba2635d986009f469`, then frozen and promoted exactly after GNT-MCH-S001-001 PASS.
 
 **Tech Stack:** Go 1.27.1, Rust 1.98.1, PostgreSQL 18, Keycloak 26.x pinned patch, React 19.2, TypeScript strict, Vite 8.1, React Aria Components, pnpm, Cedar, pgx/v5, sqlc, OpenTelemetry, OpenAPI 3.1.1, Protobuf, GitHub Actions, OCI/OpenTofu. No Python.
 
-**Spec:** GitLab `job/docs/slices/MCH-S001.md`, `job/docs/architecture/SAAS-PLATFORM-2026-2027.md`, `job/docs/operations/PRODUCTION-SYSTEM.md`, handoff `MCH-HANDOFF-S001@1.0.1`, and Founder amendment `MCH-BINDING-001@1.0.0`.
+**Spec:** GitLab `job/docs/slices/MCH-S001.md`, `job/docs/architecture/SAAS-PLATFORM-2026-2027.md`, `job/docs/operations/PRODUCTION-SYSTEM.md`, handoff `MCH-HANDOFF-S001@1.0.2`, and Founder amendment `MCH-BINDING-001@1.0.0` retained as historical compatibility evidence.
 
 ## Global constraints
 
 - Active Slice only: `MCH-S001@1.0.0`.
 - GAUNTLET: `GNT-MCH-S001-001`.
-- Canon base: `0ad4f8d69846818792853586fdded0a8636e42e996c531849483c7d53908efcd`.
+- Canon base: `fa55084ea42a40b35d80d081e658c502df709b37e61f75dba2635d986009f469`.
 - GitHub workspace base: `ce39af8f955536d270a43e03714c5057dbd33e36`.
 - All product artifacts live under `/job/**`; root is limited to AGENTS/README/provider-required metadata.
 - No Python source, runtime, image, CI job, script, migration or test harness.
@@ -190,7 +190,13 @@
   - Behavioral RED SHAs `ccf6692ca30e4fdce80f2eaf0148d74e38f01a32` and `27b84a9ec160761d0a734cf5e98133f83ef39c18` failed only for accepted `latency_ms:null` and allow-side `reason_codes:null`, respectively, after module, formatting, and vet checks passed.
   - Exact final SHA `2d7215e784346695022126752533aacb8254d1d9`: formatter workflow `34295107864` / job `102289916036`, Go workflow `34295107785` / job `102289918300`, and PostgreSQL workflow `34295107770` / job `102289918652` succeeded. PostgreSQL evidence reported `runtime_role_flags=0:0:0:0` and zero owner, RLS, or tenant-key violations.
   - Independent critique found no Critical or Important issue; one Minor coverage note does not expose a bypass because all JSON null values are rejected before decision-specific validation.
-- [ ] Evidence: trace IDs linking HTTP→authz→DB→audit/outbox and redaction assertions.
+- [x] Evidence: trace IDs linking HTTP→authz→DB→audit/outbox and redaction assertions.
+  - Behavioral RED: `9a86be0decae958820f508ccc5c778c4d105e4f7`; Go workflow `34297567641` / job `102297387130` failed only after module/format/vet gates because the required HTTP root span was absent. GREEN root wiring landed at `a495838dea2a51d7f2700b13eba1f2c31cf812ae`.
+  - Full-chain RED: `ce4cbaa60cb23c918f6250df884221eb72af6d3c`; Go workflow `34336064037` / job `102415610609` failed because one span existed where five linked tenant-switch spans were required. GREEN chain wiring landed at `8d6d27698f4c6d1a469e8dbc184f86d5677c81e2`.
+  - Redaction mutation: `4ad9690a6ce04f59893e9ee4429a702c5ec7a408`; Go workflow `34338441516` / job `102423255772` failed exactly because forbidden `span.RecordError` exported `exception.message` with the injected secret sentinels. Safe production was restored at `d0f004268855eede7b2aee56c43edc442ec214de` without weakening the test.
+  - Exact reviewed product SHA `a00e7c8f79369dcc7ca74af4b065043ab83a7813`: formatter `34339654546`, Go `34339654533` / job `102427186129`, PostgreSQL `34339654525` / job `102427187365`, and Rust authorization `34339654545` all succeeded. PostgreSQL exercised the real non-owner runtime role, reported `runtime_role_flags=0:0:0:0`, zero ownership/RLS/tenant-key violations, and passed persisted correlation equality across trace, idempotency receipt, audit, and outbox.
+  - Separated Critic review found no unresolved Critical or Important issue across contract coverage, trace parentage, authorization ordering, transaction atomicity, replay, outcome classification, attribute cardinality/redaction, RLS, failure side effects, concurrency/performance impact, or abstraction scope. A dedicated replay exporter-tree assertion remains optional strengthening rather than a demonstrated contract miss; replay behavior already proves no mutation, no new browser secrets, and no audit/outbox side effect.
+  - Local runtime PASS remains NOT_VERIFIED; exact-SHA CI/integration workflows are the execution evidence.
 - [ ] Rollback: additive tables and worker can be disabled without bypassing audit on API mutations.
 
 ## Task 7: Keycloak preview integration
