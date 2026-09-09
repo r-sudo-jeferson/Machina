@@ -191,6 +191,9 @@ func decodeAuthorizationDecisionMetadata(raw []byte) (authorizationDecisionMetad
 		if err := keyDecoder.Decode(&value); err != nil {
 			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
 		}
+		if key == "latency_ms" && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+		}
 	}
 	end, err := keyDecoder.Token()
 	if err != nil || end != json.Delim('}') {
