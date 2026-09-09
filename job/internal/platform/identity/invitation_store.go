@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrMissingInvitationToken  = errors.New("missing invitation token")
+	ErrMissingInvitationToken   = errors.New("missing invitation token")
 	ErrInvalidInvitationSubject = errors.New("invalid invitation subject")
 )
 
