@@ -214,7 +214,7 @@ SQL
 
   local ready=0
   for _ in $(seq 1 100); do
-    if docker exec "$CONTAINER" bash -c 'exec 3<>/dev/tcp/127.0.0.1:50051' >/dev/null 2>&1; then
+    if docker exec "$CONTAINER" bash -c 'exec 3<>/dev/tcp/127.0.0.1/50051' >/dev/null 2>&1; then
       ready=1
       break
     fi
