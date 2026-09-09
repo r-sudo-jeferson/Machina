@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,7 +19,11 @@ import (
 	authzv1 "github.com/r-sudo-jeferson/Machina/job/gen/authz/v1"
 	platformauthz "github.com/r-sudo-jeferson/Machina/job/internal/platform/authz"
 	platformdb "github.com/r-sudo-jeferson/Machina/job/internal/platform/db"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/identity"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -182,6 +190,170 @@ func TestTenantSwitchCoordinatorAgainstPostgreSQL(t *testing.T) {
 		idempotencyKey: "tenant-switch-outbox-fault-0001",
 		correlationID:  integrationUUID(0x31),
 	})
+	testTenantSwitchPostgreSQLTraceCorrelation(t, ctx, pool, adminPool, authorizer)
+}
+
+func testTenantSwitchPostgreSQLTraceCorrelation(
+	t *testing.T,
+	ctx context.Context,
+	runtimePool *pgxpool.Pool,
+	adminPool *pgxpool.Pool,
+	authorizer *platformauthz.Client,
+) {
+	t.Helper()
+	t.Run("HTTP trace correlation persistence", func(t *testing.T) {
+		const (
+			subjectID        = "10000000-0000-0000-0000-0000000000a1"
+			sessionID        = "3f000000-0000-0000-0000-000000000001"
+			sessionToken     = "go-integration-trace-session"
+			csrfToken        = "go-integration-trace-csrf"
+			idempotencyKey   = "tenant-switch-trace-integration-0001"
+			targetTenantText = "00000000-0000-0000-0000-0000000000b2"
+		)
+		targetTenantID := integrationUUID(0xb2)
+		sessionHash := identity.HashToken(sessionToken)
+		csrfHash := identity.HashToken(csrfToken)
+		if _, err := runtimePool.Exec(ctx, `
+			SELECT iam.create_session($1::uuid, $2::uuid, $3::bytea, $4::bytea, clock_timestamp() + interval '2 hours')
+		`, sessionID, subjectID, sessionHash[:], csrfHash[:]); err != nil {
+			t.Fatalf("create trace integration session: %v", err)
+		}
+
+		exporter := tracetest.NewInMemoryExporter()
+		provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+		previousProvider := otel.GetTracerProvider()
+		otel.SetTracerProvider(provider)
+		defer func() {
+			otel.SetTracerProvider(previousProvider)
+			if err := provider.Shutdown(context.Background()); err != nil {
+				t.Errorf("TracerProvider.Shutdown() error = %v", err)
+			}
+		}()
+
+		coordinator, err := identity.NewTenantSwitchCoordinator(platformdb.NewTransactor(runtimePool), authorizer)
+		if err != nil {
+			t.Fatalf("NewTenantSwitchCoordinator() error = %v", err)
+		}
+		handler, err := identity.NewTenantSwitchHTTPHandler(coordinator)
+		if err != nil {
+			t.Fatalf("NewTenantSwitchHTTPHandler() error = %v", err)
+		}
+		middleware, err := identity.NewSessionHTTPMiddleware(identity.NewSessionStore(sqlcgen.New(runtimePool)))
+		if err != nil {
+			t.Fatalf("NewSessionHTTPMiddleware() error = %v", err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/v1/tenant-switch", strings.NewReader(`{"tenant_id":"`+targetTenantText+`"}`))
+		request.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: sessionToken})
+		request.AddCookie(&http.Cookie{Name: identity.CSRFCookieName, Value: csrfToken})
+		request.Header.Set(identity.CSRFHeaderName, csrfToken)
+		request.Header.Set("Idempotency-Key", idempotencyKey)
+		recorder := httptest.NewRecorder()
+		middleware.Wrap(handler).ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "application/json" || recorder.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("traced tenant switch response = status:%d headers:%#v body:%s", recorder.Code, recorder.Header(), recorder.Body.Bytes())
+		}
+		if cookies := recorder.Result().Cookies(); len(cookies) != 2 {
+			t.Fatalf("traced tenant switch cookies = %#v, want session and CSRF replacements", cookies)
+		}
+
+		var receiptCorrelation pgtype.UUID
+		if err := adminPool.QueryRow(ctx, `
+			SELECT correlation_id
+			FROM ops.idempotency_keys
+			WHERE tenant_id = $1 AND idempotency_key = $2
+		`, targetTenantID, idempotencyKey).Scan(&receiptCorrelation); err != nil {
+			t.Fatalf("read traced idempotency correlation: %v", err)
+		}
+		var auditCorrelation pgtype.UUID
+		if err := adminPool.QueryRow(ctx, `
+			SELECT correlation_id
+			FROM audit.events
+			WHERE tenant_id = $1 AND correlation_id = $2 AND event_type = 'machina.tenant.switch.completed'
+		`, targetTenantID, receiptCorrelation).Scan(&auditCorrelation); err != nil {
+			t.Fatalf("read traced audit correlation: %v", err)
+		}
+		var outboxCorrelation pgtype.UUID
+		if err := adminPool.QueryRow(ctx, `
+			SELECT correlation_id
+			FROM ops.outbox
+			WHERE tenant_id = $1 AND correlation_id = $2 AND event_type = 'machina.tenant.switch.completed'
+		`, targetTenantID, receiptCorrelation).Scan(&outboxCorrelation); err != nil {
+			t.Fatalf("read traced outbox correlation: %v", err)
+		}
+		if !receiptCorrelation.Valid || auditCorrelation != receiptCorrelation || outboxCorrelation != receiptCorrelation {
+			t.Fatalf("persisted trace correlation = receipt:%v audit:%v outbox:%v", receiptCorrelation, auditCorrelation, outboxCorrelation)
+		}
+
+		var runtimeRoleFlags string
+		if err := adminPool.QueryRow(ctx, `
+			SELECT rolsuper::int || ':' || rolbypassrls::int || ':' || rolcreatedb::int || ':' || rolcreaterole::int
+			FROM pg_roles
+			WHERE rolname = 'machina_runtime'
+		`).Scan(&runtimeRoleFlags); err != nil {
+			t.Fatalf("read runtime role flags: %v", err)
+		}
+		if runtimeRoleFlags != "0:0:0:0" {
+			t.Fatalf("runtime role flags = %q, want 0:0:0:0", runtimeRoleFlags)
+		}
+
+		assertTenantSwitchPostgreSQLTrace(t, exporter.GetSpans(), integrationUUIDText(receiptCorrelation))
+	})
+}
+
+func assertTenantSwitchPostgreSQLTrace(t *testing.T, spans tracetest.SpanStubs, wantCorrelation string) {
+	t.Helper()
+	wantNames := []string{
+		"tenant.switch.http",
+		"tenant.switch.transaction",
+		"tenant.switch.authorization",
+		"tenant.switch.audit",
+		"tenant.switch.outbox",
+	}
+	if len(spans) != len(wantNames) {
+		t.Fatalf("PostgreSQL trace spans = %d, want %d: %#v", len(spans), len(wantNames), spans)
+	}
+	spanIndex := make(map[string]int, len(spans))
+	for index, span := range spans {
+		if _, duplicate := spanIndex[span.Name]; duplicate {
+			t.Fatalf("duplicate PostgreSQL trace span %q", span.Name)
+		}
+		spanIndex[span.Name] = index
+		attributes := make(map[string]string, len(span.Attributes))
+		for _, item := range span.Attributes {
+			attributes[string(item.Key)] = item.Value.AsString()
+		}
+		if len(attributes) != 2 || attributes["machina.correlation_id"] != wantCorrelation || attributes["machina.outcome"] != "success" {
+			t.Fatalf("%s PostgreSQL trace attributes = %#v", span.Name, attributes)
+		}
+	}
+	for _, name := range wantNames {
+		if _, ok := spanIndex[name]; !ok {
+			t.Fatalf("missing PostgreSQL trace span %q: %#v", name, spanIndex)
+		}
+	}
+
+	httpSpan := spans[spanIndex["tenant.switch.http"]]
+	transactionSpan := spans[spanIndex["tenant.switch.transaction"]]
+	if !httpSpan.SpanContext.TraceID().IsValid() || httpSpan.Parent.IsValid() {
+		t.Fatalf("PostgreSQL HTTP trace context = span:%s parent:%s", httpSpan.SpanContext.SpanID(), httpSpan.Parent.SpanID())
+	}
+	if transactionSpan.Parent.SpanID() != httpSpan.SpanContext.SpanID() || transactionSpan.SpanContext.TraceID() != httpSpan.SpanContext.TraceID() {
+		t.Fatalf("PostgreSQL transaction trace lineage = trace:%s parent:%s", transactionSpan.SpanContext.TraceID(), transactionSpan.Parent.SpanID())
+	}
+	for _, name := range []string{"tenant.switch.authorization", "tenant.switch.audit", "tenant.switch.outbox"} {
+		span := spans[spanIndex[name]]
+		if span.Parent.SpanID() != transactionSpan.SpanContext.SpanID() || span.SpanContext.TraceID() != httpSpan.SpanContext.TraceID() {
+			t.Fatalf("%s PostgreSQL trace lineage = trace:%s parent:%s", name, span.SpanContext.TraceID(), span.Parent.SpanID())
+		}
+	}
+}
+
+func integrationUUIDText(value pgtype.UUID) string {
+	if !value.Valid {
+		return ""
+	}
+	bytes := value.Bytes
+	return fmt.Sprintf("%x-%x-%x-%x-%x", bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
 
 type tenantSwitchFaultCase struct {
