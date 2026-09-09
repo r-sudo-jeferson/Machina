@@ -36,6 +36,13 @@ INSERT INTO iam.memberships (tenant_id, subject_id, starter_role, status)
 VALUES (sqlc.arg(tenant_id), sqlc.arg(subject_id), sqlc.arg(starter_role), 'active')
 RETURNING tenant_id, subject_id, starter_role, status, created_at, updated_at;
 
+-- name: AcceptInvitation :one
+SELECT tenant_id, subject_id, starter_role, status
+FROM iam.accept_invitation(
+  sqlc.arg(token_hash)::bytea,
+  sqlc.arg(subject_id)::uuid
+);
+
 -- name: GetPreference :one
 SELECT tenant_id, subject_id, theme, locale, preferences, updated_at
 FROM iam.preferences
