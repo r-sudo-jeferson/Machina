@@ -236,7 +236,7 @@ SQL
     MACHINA_TENANT_SWITCH_ADMIN_DATABASE_URL="postgresql://postgres@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
     MACHINA_TENANT_SWITCH_AUTHZ_GRPC_ADDR="127.0.0.1:50051" \
     /tmp/machina-tenant-switch-identity.test \
-    -test.run '^TestTenantSwitchCoordinatorAgainstPostgreSQL$' \
+    -test.run '^(TestTenantSwitchCoordinatorAgainstPostgreSQL|TestTenantSwitchRollbackWithoutCheckpointerAgainstPostgreSQL)$' \
     -test.v
   integration_exit=$?
   set -e
