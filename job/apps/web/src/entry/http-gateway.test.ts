@@ -143,4 +143,67 @@ describe('createBrowserEntryGateway', () => {
     });
     expect((error as Error).message).toContain('Session required.');
   });
+
+  it('switches tenant with caller-stable idempotency and server-authorized response context', async () => {
+    const switched = sessionPayload();
+    switched.available_tenants.push({
+      id: '00000000-0000-4000-8000-000000000011',
+      slug: 'globex',
+      display_name: 'Globex',
+      status: 'active',
+    });
+    switched.active.tenant = switched.available_tenants[1]!;
+    switched.active.workspace = {
+      id: '00000000-0000-4000-8000-000000000021',
+      tenant_id: '00000000-0000-4000-8000-000000000011',
+      slug: 'ops',
+      display_name: 'Operations',
+    };
+
+    let seenInput: RequestInfo | URL | undefined;
+    let seenInit: RequestInit | undefined;
+    const fetcher: typeof fetch = async (input, init) => {
+      seenInput = input;
+      seenInit = init;
+      return jsonResponse(switched);
+    };
+    const controller = new AbortController();
+    type MutationGateway = ReturnType<typeof createBrowserEntryGateway> & {
+      switchTenant(
+        request: {tenantId: string; idempotencyKey: string},
+        signal?: AbortSignal,
+      ): Promise<ReturnType<typeof parseSessionContext>>;
+    };
+    type GatewayFactory = (
+      fetcher: typeof fetch,
+      security: {readCSRFToken(): string},
+    ) => MutationGateway;
+    const gateway = (createBrowserEntryGateway as unknown as GatewayFactory)(fetcher, {
+      readCSRFToken: () => 'csrf-token-value-that-is-long-enough',
+    });
+
+    const session = await gateway.switchTenant(
+      {
+        tenantId: '00000000-0000-4000-8000-000000000011',
+        idempotencyKey: 'tenant-switch-operation-0001',
+      },
+      controller.signal,
+    );
+
+    expect(seenInput).toBe('/api/v1/tenant-switch');
+    expect(seenInit?.method).toBe('POST');
+    expect(seenInit?.credentials).toBe('same-origin');
+    expect(seenInit?.headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'tenant-switch-operation-0001',
+      'X-CSRF-Token': 'csrf-token-value-that-is-long-enough',
+    });
+    expect(seenInit?.body).toBe(
+      JSON.stringify({tenant_id: '00000000-0000-4000-8000-000000000011'}),
+    );
+    expect(seenInit?.signal).toBe(controller.signal);
+    expect(session.active.tenant.slug).toBe('globex');
+    expect(session.active.workspace.slug).toBe('ops');
+  });
 });
