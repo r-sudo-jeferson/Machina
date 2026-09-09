@@ -204,6 +204,11 @@ export function createBrowserEntryGateway(
     },
 
     async switchTenant(command: TenantSwitchCommand, signal?: AbortSignal): Promise<SessionContext> {
+      const csrfToken = security.readCSRFToken();
+      if (csrfToken === undefined || csrfToken.length === 0) {
+        throw new Error('Secure request token is unavailable.');
+      }
+
       const response = await fetcher(TENANT_SWITCH_ENDPOINT, {
         method: 'POST',
         credentials: 'same-origin',
@@ -211,7 +216,7 @@ export function createBrowserEntryGateway(
           Accept: 'application/json',
           'Content-Type': 'application/json',
           'Idempotency-Key': command.idempotencyKey,
-          [CSRF_HEADER_NAME]: security.readCSRFToken() ?? '',
+          [CSRF_HEADER_NAME]: csrfToken,
         },
         body: JSON.stringify({tenant_id: command.tenantId}),
         signal: signal ?? null,
