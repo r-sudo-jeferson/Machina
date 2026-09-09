@@ -1,14 +1,10 @@
 import {existsSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 describe('Task 9 web entry boundary', () => {
   it('has an application entry module before journey behavior can be implemented', () => {
-    const entryModule = new URL('./app.tsx', import.meta.url);
-    console.info(JSON.stringify({
-      cwd: process.cwd(),
-      importMetaUrl: import.meta.url,
-      entryModule: entryModule.href,
-    }));
+    const entryModule = resolve(process.cwd(), 'src/app.tsx');
 
     expect(
       existsSync(entryModule),
