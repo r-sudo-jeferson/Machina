@@ -9,6 +9,7 @@ import type {
 } from './contracts';
 
 const SESSION_ENDPOINT = '/api/v1/session';
+const OPENAPI_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -97,8 +98,8 @@ export function parseSessionContext(value: unknown): SessionContext {
   const identity = parseIdentity(value.identity);
   const active = parseAuthorizedContext(value.active);
   const expiresAt = stringField(value, 'expires_at');
-  if (Number.isNaN(Date.parse(expiresAt))) {
-    throw new Error('Invalid session payload: expires_at must be an ISO date-time.');
+  if (!OPENAPI_DATE_TIME.test(expiresAt) || Number.isNaN(Date.parse(expiresAt))) {
+    throw new Error('Invalid session payload: expires_at must be an OpenAPI date-time.');
   }
   if (active.identity.id !== identity.id) {
     throw new Error('Invalid session payload: active identity does not match session identity.');
