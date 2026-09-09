@@ -56,11 +56,25 @@
   overflow-wrap: anywhere;
 }
 
+.entry-header-tools {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: flex-end;
+}
+
 .entry-identity {
   display: grid;
   gap: 4px;
   justify-items: end;
   text-align: end;
+}
+
+.entry-appearance-control {
+  display: grid;
+  gap: 6px;
+  min-inline-size: min(100%, 168px);
 }
 
 .entry-context-switch-well,
@@ -164,14 +178,23 @@
   }
 
   .entry-context-header,
+  .entry-header-tools,
   .entry-capability-item {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .entry-header-tools {
+    inline-size: 100%;
+  }
+
   .entry-identity {
     justify-items: start;
     text-align: start;
+  }
+
+  .entry-appearance-control {
+    min-inline-size: 0;
   }
 
   .entry-context-switch-controls {

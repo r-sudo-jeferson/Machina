@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {AlloyChassis, AlloySurface, AlloyWell, Button, StatusLamp} from '@machina/alloy';
 import type {
+  AlloyTheme,
   EntryGateway,
   EntryMutationGateway,
   SessionContext,
@@ -45,11 +46,16 @@ function defaultIdempotencyKey(): string {
   return globalThis.crypto.randomUUID();
 }
 
+function isAlloyTheme(value: string): value is AlloyTheme {
+  return value === 'silver' || value === 'space-black';
+}
+
 export function MachinaEntryApp({
   gateway,
   newIdempotencyKey = defaultIdempotencyKey,
 }: MachinaEntryAppProps) {
   const [state, setState] = useState<EntryState>({kind: 'loading'});
+  const [theme, setTheme] = useState<AlloyTheme>('silver');
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [tenantSwitch, setTenantSwitch] = useState<TenantSwitchState>({kind: 'idle'});
   const tenantSwitchController = useRef<AbortController | null>(null);
@@ -89,7 +95,7 @@ export function MachinaEntryApp({
 
   if (state.kind === 'loading') {
     return (
-      <AlloyChassis theme="silver" className="entry-chassis">
+      <AlloyChassis theme={theme} className="entry-chassis">
         <main className="entry-frame" aria-labelledby="machina-entry-title" aria-busy="true">
           <AlloySurface material="convex-low" className="entry-card entry-card--centered">
             <p className="entry-eyebrow">Secure tenant entry</p>
@@ -105,7 +111,7 @@ export function MachinaEntryApp({
 
   if (state.kind === 'error') {
     return (
-      <AlloyChassis theme="silver" className="entry-chassis">
+      <AlloyChassis theme={theme} className="entry-chassis">
         <main className="entry-frame" aria-labelledby="machina-entry-title" aria-busy="false">
           <AlloySurface material="convex-low" className="entry-card entry-card--centered">
             <p className="entry-eyebrow">Secure tenant entry</p>
@@ -182,7 +188,7 @@ export function MachinaEntryApp({
   };
 
   return (
-    <AlloyChassis theme="silver" className="entry-chassis">
+    <AlloyChassis theme={theme} className="entry-chassis">
       <main
         className="entry-frame"
         aria-labelledby="active-context-title"
@@ -196,9 +202,30 @@ export function MachinaEntryApp({
                 {active.tenant.display_name} / {active.workspace.display_name}
               </h1>
             </div>
-            <div className="entry-identity" aria-label="Signed-in identity">
-              <span>{active.identity.display_name}</span>
-              <span>Policy v{active.policy_version}</span>
+            <div className="entry-header-tools">
+              <div className="entry-identity" aria-label="Signed-in identity">
+                <span>{active.identity.display_name}</span>
+                <span>Policy v{active.policy_version}</span>
+              </div>
+              <div className="entry-appearance-control">
+                <label className="alloy-label" htmlFor="appearance-select">
+                  Appearance
+                </label>
+                <select
+                  id="appearance-select"
+                  className="entry-context-select entry-appearance-select"
+                  value={theme}
+                  onChange={(event) => {
+                    const nextTheme = event.currentTarget.value;
+                    if (isAlloyTheme(nextTheme)) {
+                      setTheme(nextTheme);
+                    }
+                  }}
+                >
+                  <option value="silver">Silver</option>
+                  <option value="space-black">Space Black</option>
+                </select>
+              </div>
             </div>
           </header>
 
