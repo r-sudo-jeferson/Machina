@@ -1,11 +1,14 @@
 import {cleanup, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {readFile} from 'node:fs/promises';
+import path from 'node:path';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {Button, IconButton, Switch, TextField} from './controls';
 import {StatusLamp} from './status';
 
 afterEach(() => cleanup());
+
+const sourcePath = (fileName: string) => path.resolve(process.cwd(), 'src', fileName);
 
 describe('Alloy React Aria controls', () => {
   it('uses semantic Button press behavior and React Aria state attributes', async () => {
@@ -21,7 +24,7 @@ describe('Alloy React Aria controls', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a pending button named, focusable, announced, and non-pressable', async () => {
+  it('keeps the action name while announcing pending progress, stays focusable, and blocks press', async () => {
     const user = userEvent.setup();
     const onPress = vi.fn();
     render(
@@ -30,7 +33,7 @@ describe('Alloy React Aria controls', () => {
       </Button>,
     );
 
-    const button = screen.getByRole('button', {name: 'Save changes'});
+    const button = screen.getByRole('button', {name: /Save changes.*Saving changes/});
     expect(button.hasAttribute('data-pending')).toBe(true);
     expect(screen.getByRole('progressbar', {name: 'Saving changes'})).toBeTruthy();
     await user.click(button);
@@ -113,7 +116,7 @@ describe('Alloy semantic status', () => {
 
 describe('Alloy control implementation contract', () => {
   it('delegates interaction state to React Aria and does not introduce local useState state machines', async () => {
-    const source = await readFile(new URL('./controls.tsx', import.meta.url), 'utf8');
+    const source = await readFile(sourcePath('controls.tsx'), 'utf8');
     expect(source).toContain("from 'react-aria-components'");
     expect(source).not.toMatch(/\buseState\s*\(/);
   });

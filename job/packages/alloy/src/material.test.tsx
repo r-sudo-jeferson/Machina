@@ -1,9 +1,12 @@
 import {cleanup, render, screen} from '@testing-library/react';
-import {afterEach, describe, expect, it} from 'vitest';
 import {readFile} from 'node:fs/promises';
+import path from 'node:path';
+import {afterEach, describe, expect, it} from 'vitest';
 import {AlloyChassis, AlloySurface, AlloyWell} from './material';
 
 afterEach(() => cleanup());
+
+const sourcePath = (fileName: string) => path.resolve(process.cwd(), 'src', fileName);
 
 describe('Alloy material primitives', () => {
   it('accepts only the canonical Silver and Space Black chassis themes', () => {
@@ -41,7 +44,7 @@ describe('Alloy material primitives', () => {
 
 describe('Alloy component CSS contract', () => {
   it('uses generated semantic variables and never duplicates canonical palette literals', async () => {
-    const css = await readFile(new URL('./alloy.css', import.meta.url), 'utf8');
+    const css = await readFile(sourcePath('alloy.css'), 'utf8');
     const canonicalHex = [
       '#D8DADD', '#F5F6F7', '#B4B8BE', '#C9CCD1', '#17191D', '#4D535B', '#737A84',
       '#1D1F22', '#34373C', '#090A0C', '#141619', '#F5F7FA', '#B2B8C1', '#7B828D',
@@ -55,7 +58,7 @@ describe('Alloy component CSS contract', () => {
   });
 
   it('keeps focus, targets, pending geometry, and forced-colors semantics explicit', async () => {
-    const css = await readFile(new URL('./alloy.css', import.meta.url), 'utf8');
+    const css = await readFile(sourcePath('alloy.css'), 'utf8');
 
     expect(css).toContain('[data-focus-visible]');
     expect(css).toMatch(/outline:\s*var\(--alloy-focus-width\)\s+solid\s+var\(--alloy-focus\)/);
