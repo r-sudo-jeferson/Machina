@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
@@ -86,6 +87,21 @@ func validTenantSwitchTraceOutcome(outcome observability.Outcome) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func tenantSwitchTraceOutcomeForError(err error) observability.Outcome {
+	switch {
+	case err == nil:
+		return observability.OutcomeSuccess
+	case errors.Is(err, ErrTenantSwitchForbidden):
+		return observability.OutcomeDenied
+	case errors.Is(err, ErrTenantSwitchScopeConflict),
+		errors.Is(err, ErrTenantSwitchInProgress),
+		errors.Is(err, ErrTenantSwitchStale):
+		return observability.OutcomeConflict
+	default:
+		return observability.OutcomeError
 	}
 }
 

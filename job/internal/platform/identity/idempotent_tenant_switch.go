@@ -19,7 +19,9 @@ import (
 	platformdb "github.com/r-sudo-jeferson/Machina/job/internal/platform/db"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/db/sqlcgen"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/idempotency"
+	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/outbox"
+	"go.opentelemetry.io/otel"
 )
 
 const TenantSwitchOperation = "tenant.switch.v1"
@@ -97,6 +99,7 @@ type tenantSwitchTransactionRunner func(context.Context, func(context.Context, t
 type TenantSwitchCoordinator struct {
 	run        tenantSwitchTransactionRunner
 	authorizer tenantSwitchAuthorizer
+	tracing    *tenantSwitchTracing
 }
 
 // NewTenantSwitchCoordinator binds the coordinator to the fail-closed
@@ -114,10 +117,18 @@ func NewTenantSwitchCoordinator(scope *platformdb.Transactor, authorizer tenantS
 }
 
 func newTenantSwitchCoordinator(run tenantSwitchTransactionRunner, authorizer tenantSwitchAuthorizer) (*TenantSwitchCoordinator, error) {
-	if run == nil || isNilTenantSwitchAuthorizer(authorizer) {
+	tracing, err := newTenantSwitchTracing(otel.Tracer(tenantSwitchTraceInstrumentationName))
+	if err != nil {
+		return nil, errors.Join(ErrInvalidTenantSwitchCoordinatorConfig, err)
+	}
+	return newTenantSwitchCoordinatorWithTracing(run, authorizer, tracing)
+}
+
+func newTenantSwitchCoordinatorWithTracing(run tenantSwitchTransactionRunner, authorizer tenantSwitchAuthorizer, tracing *tenantSwitchTracing) (*TenantSwitchCoordinator, error) {
+	if run == nil || isNilTenantSwitchAuthorizer(authorizer) || tracing == nil {
 		return nil, ErrInvalidTenantSwitchCoordinatorConfig
 	}
-	return &TenantSwitchCoordinator{run: run, authorizer: authorizer}, nil
+	return &TenantSwitchCoordinator{run: run, authorizer: authorizer, tracing: tracing}, nil
 }
 
 // Switch performs binding, idempotency claim, session mutation, projection,
@@ -125,7 +136,7 @@ func newTenantSwitchCoordinator(run tenantSwitchTransactionRunner, authorizer te
 // Replacement secrets are copied into the returned result only after the
 // runner reports a successful commit.
 func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwitchRequest) (TenantSwitchResult, error) {
-	if c == nil || c.run == nil || isNilTenantSwitchAuthorizer(c.authorizer) {
+	if c == nil || c.run == nil || isNilTenantSwitchAuthorizer(c.authorizer) || c.tracing == nil {
 		return TenantSwitchResult{}, ErrInvalidTenantSwitchCoordinatorConfig
 	}
 	if ctx == nil {
@@ -134,10 +145,15 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 	if err := validateTenantSwitchRequest(request); err != nil {
 		return TenantSwitchResult{}, err
 	}
+	traceCtx, transactionSpan := c.tracing.start(ctx, tenantSwitchSpanTransaction, request.CorrelationID)
+	transactionOutcome := observability.OutcomeError
+	defer func() {
+		finishTenantSwitchSpan(transactionSpan, transactionOutcome)
+	}()
 
 	requestHash := tenantSwitchRequestHash(request.TargetTenantID)
 	var pending TenantSwitchResult
-	err := c.run(ctx, func(txCtx context.Context, unit tenantSwitchUnit) error {
+	err := c.run(traceCtx, func(txCtx context.Context, unit tenantSwitchUnit) error {
 		if txCtx == nil || isNilTenantSwitchUnit(unit) {
 			return ErrInvalidTenantSwitchCoordinatorConfig
 		}
@@ -179,6 +195,7 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 		}
 	})
 	if err != nil {
+		transactionOutcome = tenantSwitchTraceOutcomeForError(err)
 		// A failed commit may have committed remotely. Never publish generated
 		// browser secrets in that ambiguous state; reauthentication is required.
 		if errors.Is(err, platformdb.ErrTransactionCommit) {
@@ -188,6 +205,10 @@ func (c *TenantSwitchCoordinator) Switch(ctx context.Context, request TenantSwit
 	}
 	if !pending.CorrelationID.Valid {
 		return TenantSwitchResult{}, ErrInvalidTenantSwitchOutcome
+	}
+	transactionOutcome = observability.OutcomeSuccess
+	if pending.Replay {
+		transactionOutcome = observability.OutcomeReplay
 	}
 	return pending, nil
 }
@@ -272,7 +293,8 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 	if err != nil {
 		return fmt.Errorf("create tenant-switch audit recorder: %w", err)
 	}
-	if err := recorder.Record(ctx, audit.Event{
+	auditCtx, auditSpan := c.tracing.start(ctx, tenantSwitchSpanAudit, request.CorrelationID)
+	err = recorder.Record(auditCtx, audit.Event{
 		TenantID:       request.TargetTenantID,
 		ID:             auditID,
 		ActorSubjectID: actorID,
@@ -283,14 +305,17 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		CorrelationID:  request.CorrelationID,
 		SafeMetadata:   auditMetadata,
 		OccurredAt:     eventTime,
-	}); err != nil {
+	})
+	finishTenantSwitchSpan(auditSpan, tenantSwitchTraceOutcomeForError(err))
+	if err != nil {
 		return err
 	}
 	publisher, err := outbox.NewPublisher(unit)
 	if err != nil {
 		return fmt.Errorf("create tenant-switch outbox publisher: %w", err)
 	}
-	if err := publisher.Publish(ctx, outbox.Envelope{
+	outboxCtx, outboxSpan := c.tracing.start(ctx, tenantSwitchSpanOutbox, request.CorrelationID)
+	err = publisher.Publish(outboxCtx, outbox.Envelope{
 		EventID:       outboxID,
 		EventType:     "machina.tenant.switch.completed",
 		EventVersion:  1,
@@ -300,7 +325,9 @@ func (c *TenantSwitchCoordinator) claimAndSwitch(
 		CorrelationID: request.CorrelationID,
 		ActorID:       actorID,
 		Payload:       outboxPayload,
-	}); err != nil {
+	})
+	finishTenantSwitchSpan(outboxSpan, tenantSwitchTraceOutcomeForError(err))
+	if err != nil {
 		return err
 	}
 

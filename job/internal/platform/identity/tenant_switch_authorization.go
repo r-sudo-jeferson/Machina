@@ -24,10 +24,15 @@ func (c *TenantSwitchCoordinator) authorizeTenantSwitch(
 	request TenantSwitchRequest,
 	presentedSessionHash []byte,
 	bind sqlcgen.BindTenantSwitchIdempotencyRow,
-) error {
-	if c == nil || isNilTenantSwitchAuthorizer(c.authorizer) || ctx == nil || isNilTenantSwitchUnit(unit) {
+) (resultErr error) {
+	if c == nil || isNilTenantSwitchAuthorizer(c.authorizer) || c.tracing == nil || ctx == nil || isNilTenantSwitchUnit(unit) {
 		return ErrInvalidTenantSwitchCoordinatorConfig
 	}
+	traceCtx, authorizationSpan := c.tracing.start(ctx, tenantSwitchSpanAuthorization, request.CorrelationID)
+	defer func() {
+		finishTenantSwitchSpan(authorizationSpan, tenantSwitchTraceOutcomeForError(resultErr))
+	}()
+	ctx = traceCtx
 
 	identity, err := unit.GetSessionIdentity(ctx, presentedSessionHash)
 	if err != nil {

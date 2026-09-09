@@ -13,7 +13,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/r-sudo-jeferson/Machina/job/internal/platform/observability"
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -126,29 +125,26 @@ func TestTenantSwitchTracingRejectsUnsafeInputs(t *testing.T) {
 func TestTenantSwitchTraceLinksHTTPAuthorizationTransactionAuditAndOutbox(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
-	previousProvider := otel.GetTracerProvider()
-	otel.SetTracerProvider(provider)
 	t.Cleanup(func() {
-		otel.SetTracerProvider(previousProvider)
 		if err := provider.Shutdown(context.Background()); err != nil {
 			t.Errorf("TracerProvider.Shutdown() error = %v", err)
 		}
 	})
+	tracing, err := newTenantSwitchTracing(provider.Tracer("machina-tenant-switch-full-trace-test"))
+	if err != nil {
+		t.Fatalf("newTenantSwitchTracing() error = %v", err)
+	}
 
 	unit := claimedTenantSwitchUnit()
 	authorizer := allowTenantSwitchAuthorizer()
 	authorizer.observe = func() [4]int {
 		return [4]int{unit.claimCalls, unit.switchCalls, unit.auditCalls, unit.outboxCalls}
 	}
-	coordinator, err := newTenantSwitchCoordinator(func(ctx context.Context, fn func(context.Context, tenantSwitchUnit) error) error {
+	coordinator, err := newTenantSwitchCoordinatorWithTracing(func(ctx context.Context, fn func(context.Context, tenantSwitchUnit) error) error {
 		return fn(ctx, unit)
-	}, authorizer)
+	}, authorizer, tracing)
 	if err != nil {
-		t.Fatalf("newTenantSwitchCoordinator() error = %v", err)
-	}
-	tracing, err := newTenantSwitchTracing(provider.Tracer("machina-tenant-switch-full-trace-test"))
-	if err != nil {
-		t.Fatalf("newTenantSwitchTracing() error = %v", err)
+		t.Fatalf("newTenantSwitchCoordinatorWithTracing() error = %v", err)
 	}
 	metrics, _ := tenantSwitchHTTPTestMetrics(t)
 	handler, err := newTenantSwitchHTTPHandlerWithTracing(
