@@ -263,7 +263,7 @@ run_go_audit_integration() {
   docker exec "$CONTAINER" env \
     MACHINA_AUDIT_DATABASE_URL="postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
     /tmp/machina-audit.test \
-    -test.run '^TestDecisionEvidenceRoundTripPostgreSQL$' \
+    -test.run '^(TestDecisionEvidenceRoundTripPostgreSQL|TestPostgresCheckpointStoreRoundTripAndConflictWinner)$' \
     -test.v
   rm -rf -- "$AUDIT_INTEGRATION_DIR"
   AUDIT_INTEGRATION_DIR=''
