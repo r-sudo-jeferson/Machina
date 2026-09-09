@@ -45,3 +45,42 @@ INSERT INTO ops.outbox (
   sqlc.arg(payload)::jsonb,
   sqlc.arg(occurred_at)::timestamptz
 );
+
+-- name: GetAuditChainHead :one
+SELECT last_sequence, last_chain_hash
+FROM audit.chain_heads
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid;
+
+-- name: GetAuditCheckpoint :one
+SELECT tenant_id, id, chain_sequence, chain_hash, statement_digest,
+       algorithm, key_id, signature, signed_at
+FROM audit.checkpoints
+WHERE tenant_id = sqlc.arg(tenant_id)::uuid
+  AND chain_sequence = sqlc.arg(chain_sequence)::bigint
+  AND key_id = sqlc.arg(key_id)::text;
+
+-- name: InsertAuditCheckpoint :one
+INSERT INTO audit.checkpoints (
+  tenant_id,
+  id,
+  chain_sequence,
+  chain_hash,
+  statement_digest,
+  algorithm,
+  key_id,
+  signature,
+  signed_at
+) VALUES (
+  sqlc.arg(tenant_id)::uuid,
+  sqlc.arg(checkpoint_id)::uuid,
+  sqlc.arg(chain_sequence)::bigint,
+  sqlc.arg(chain_hash)::bytea,
+  sqlc.arg(statement_digest)::bytea,
+  sqlc.arg(algorithm)::text,
+  sqlc.arg(key_id)::text,
+  sqlc.arg(signature)::bytea,
+  sqlc.arg(signed_at)::timestamptz
+)
+ON CONFLICT (tenant_id, chain_sequence, key_id) DO NOTHING
+RETURNING tenant_id, id, chain_sequence, chain_hash, statement_digest,
+          algorithm, key_id, signature, signed_at;
