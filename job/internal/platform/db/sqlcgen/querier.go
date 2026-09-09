@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	AcceptInvitation(ctx context.Context, arg AcceptInvitationParams) (AcceptInvitationRow, error)
 	BindTenantSwitchIdempotency(ctx context.Context, arg BindTenantSwitchIdempotencyParams) (BindTenantSwitchIdempotencyRow, error)
 	ClaimIdempotencyKey(ctx context.Context, arg ClaimIdempotencyKeyParams) (ClaimIdempotencyKeyRow, error)
 	CompleteIdempotencyKey(ctx context.Context, arg CompleteIdempotencyKeyParams) (bool, error)

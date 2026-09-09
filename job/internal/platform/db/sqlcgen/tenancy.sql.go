@@ -11,6 +11,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acceptInvitation = `-- name: AcceptInvitation :one
+SELECT tenant_id::uuid AS tenant_id,
+       subject_id::uuid AS subject_id,
+       starter_role::text AS starter_role,
+       status::text AS status
+FROM iam.accept_invitation(
+  $1::bytea,
+  $2::uuid
+)
+`
+
+type AcceptInvitationParams struct {
+	TokenHash []byte
+	SubjectID pgtype.UUID
+}
+
+type AcceptInvitationRow struct {
+	TenantID    pgtype.UUID
+	SubjectID   pgtype.UUID
+	StarterRole string
+	Status      string
+}
+
+func (q *Queries) AcceptInvitation(ctx context.Context, arg AcceptInvitationParams) (AcceptInvitationRow, error) {
+	row := q.db.QueryRow(ctx, acceptInvitation, arg.TokenHash, arg.SubjectID)
+	var i AcceptInvitationRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.SubjectID,
+		&i.StarterRole,
+		&i.Status,
+	)
+	return i, err
+}
+
 const createMembership = `-- name: CreateMembership :one
 INSERT INTO iam.memberships (tenant_id, subject_id, starter_role, status)
 VALUES ($1, $2, $3, 'active')
