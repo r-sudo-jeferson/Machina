@@ -1,0 +1,30 @@
+{
+  "name": "@machina/alloy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:tokens": "node scripts/build-tokens.mjs",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "react-aria-components": "1.21.1"
+  },
+  "peerDependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.6.0",
+    "@types/react": "19.2.18",
+    "@vitejs/plugin-react": "6.1.1",
+    "axe-core": "4.13.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "storybook": "10.6.0",
+    "typescript": "6.0.3",
+    "vite": "8.1.0",
+    "vitest": "5.0.0"
+  }
+}

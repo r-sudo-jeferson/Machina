@@ -52,3 +52,23 @@ jobs:
           set -euo pipefail
           node packages/alloy/scripts/build-tokens.mjs
           git diff --exit-code -- packages/alloy/generated
+
+      - name: Activate pnpm 12.3.4
+        working-directory: job
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@12.3.4 --activate
+          test "$(pnpm --version)" = "12.3.4"
+
+      - name: Generate and verify Task 8.4 lockfile
+        working-directory: job
+        run: |
+          set -euo pipefail
+          pnpm install --lockfile-only
+          pnpm install --frozen-lockfile
+          pnpm --filter @machina/alloy typecheck
+          pnpm --filter @machina/alloy test
+          printf 'PNPM_LOCK_BASE64_BEGIN\n'
+          base64 -w0 pnpm-lock.yaml
+          printf '\nPNPM_LOCK_BASE64_END\n'
