@@ -63,11 +63,56 @@
   text-align: end;
 }
 
+.entry-context-switch-well,
 .entry-capability-well {
   box-sizing: border-box;
   display: grid;
   gap: 20px;
   padding: clamp(20px, 4vw, 36px);
+}
+
+.entry-context-switch-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.entry-context-switch-copy p {
+  color: var(--alloy-text-secondary);
+  max-inline-size: 68ch;
+}
+
+.entry-context-switch-controls {
+  align-items: end;
+  display: grid;
+  gap: 10px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.entry-context-switch-controls .alloy-label {
+  grid-column: 1 / -1;
+}
+
+.entry-context-select {
+  background: var(--alloy-well);
+  border: var(--alloy-focus-width) solid var(--alloy-text-secondary);
+  border-radius: 12px;
+  box-shadow: var(--alloy-material-concave-low-shadow);
+  color: var(--alloy-text-primary);
+  font: inherit;
+  min-block-size: var(--alloy-target-preferred);
+  min-inline-size: var(--alloy-target-minimum);
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.entry-context-select:focus-visible {
+  outline: var(--alloy-focus-width) solid var(--alloy-focus);
+  outline-offset: var(--alloy-focus-offset);
+}
+
+.entry-context-select:disabled {
+  box-shadow: none;
+  color: var(--alloy-text-disabled);
 }
 
 .entry-capability-list {
@@ -102,6 +147,13 @@
   font-size: 0.82rem;
 }
 
+@media (forced-colors: active) {
+  .entry-context-select {
+    box-shadow: none;
+    forced-color-adjust: auto;
+  }
+}
+
 @media (max-width: 640px) {
   .entry-frame {
     padding: 16px;
@@ -120,5 +172,14 @@
   .entry-identity {
     justify-items: start;
     text-align: start;
+  }
+
+  .entry-context-switch-controls {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .entry-context-switch-controls .alloy-label {
+    grid-column: auto;
   }
 }
