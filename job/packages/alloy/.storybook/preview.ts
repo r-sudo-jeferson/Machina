@@ -1,5 +1,6 @@
 import '../generated/tokens.css';
 import '../src/alloy.css';
+import './preview.css';
 import type {Preview} from '@storybook/react-vite';
 
 const themes = ['silver', 'space-black'] as const;

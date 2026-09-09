@@ -80,3 +80,18 @@ jobs:
       - name: Build Alloy Storybook
         working-directory: job
         run: pnpm --filter @machina/alloy build-storybook
+
+      - name: Capture Alloy visual critic evidence
+        working-directory: job
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: pnpm --filter @machina/alloy critic:evidence
+
+      - name: Upload Alloy visual critic evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: alloy-storybook-critic-${{ github.sha }}
+          path: job/packages/alloy/critic-evidence/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
