@@ -79,6 +79,12 @@ test('canonical Alloy token files and palettes are exact DTCG 2025.10 values', a
   assertDtcgSrgbColor(detail.reactorGreen, '#20E37A');
 
   assert.deepEqual(primitives.alloy.primitive.spacing.base.$value, { value: 4, unit: 'px' });
+  const interfaceTypography = primitives.alloy.primitive.typography?.interface;
+  assert.equal(interfaceTypography?.$type, 'fontFamily');
+  assert.deepEqual(
+    interfaceTypography?.$value,
+    ['Inter Variable', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  );
   assert.deepEqual(
     Object.values(primitives.alloy.primitive.radius).map((token) => token.$value.value),
     [8, 12, 18, 24, 32],

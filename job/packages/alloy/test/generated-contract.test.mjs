@@ -102,6 +102,10 @@ test('compiler output is deterministic and byte-identical to committed contracts
       assert.match(firstCss, /@media \(forced-colors: active\)/);
       assert.match(firstCss, /@media \(prefers-reduced-motion: reduce\)/);
       assert.match(firstCss, /--alloy-focus-width: 2px/);
+      assert.match(
+        firstCss,
+        /--alloy-font-interface: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif/,
+      );
       assert.match(firstCss, /forced-color-adjust:/);
       assert.match(firstCss, /CanvasText|Highlight/);
       assert.match(firstTs, /export const alloyThemes = \["silver", "space-black"\] as const/);
