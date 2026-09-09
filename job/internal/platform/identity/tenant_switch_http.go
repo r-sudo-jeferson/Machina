@@ -134,7 +134,6 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		CorrelationID:         correlationID,
 	})
 	if err != nil {
-		span.RecordError(err)
 		status, code := mapTenantSwitchHTTPError(err)
 		traceOutcome = tenantSwitchHTTPMetricOutcome(err, status)
 		h.recordTenantSwitchMetric(traceCtx, traceOutcome, startedAt)
