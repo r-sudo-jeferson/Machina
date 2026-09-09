@@ -40,7 +40,10 @@ func TestVerifyStoredEventContentHashAcceptsJSONBNormalizationAndRejectsTamperin
 		{name: "action", mutate: func(v StoredEvent) StoredEvent { v.Action = "tenant.read.tampered"; return v }},
 		{name: "policy version", mutate: func(v StoredEvent) StoredEvent { v.PolicyVersion++; return v }},
 		{name: "correlation", mutate: func(v StoredEvent) StoredEvent { v.CorrelationID = auditTestUUID(0x7a); return v }},
-		{name: "metadata", mutate: func(v StoredEvent) StoredEvent { v.SafeMetadata = []byte(`{"latency_ms":26,"reason_codes":["explicit_forbid"]}`); return v }},
+		{name: "metadata", mutate: func(v StoredEvent) StoredEvent {
+			v.SafeMetadata = []byte(`{"latency_ms":26,"reason_codes":["explicit_forbid"]}`)
+			return v
+		}},
 		{name: "occurred at", mutate: func(v StoredEvent) StoredEvent { v.OccurredAt = v.OccurredAt.Add(time.Microsecond); return v }},
 		{name: "stored event hash", mutate: func(v StoredEvent) StoredEvent {
 			v.EventHash = append([]byte(nil), v.EventHash...)
