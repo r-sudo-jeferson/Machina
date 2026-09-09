@@ -45,6 +45,25 @@ wait_for_keycloak_ready() {
   fi
 }
 
+create_keycloak_container() {
+  # start-dev is intentionally confined to this disposable CI integration
+  # harness. Task 11 owns production-shaped preview deployment. This container
+  # is retained until explicit cleanup so restart and destroy/recreate are both
+  # proven against the same versioned inputs.
+  docker run --detach \
+    --name "$CONTAINER" \
+    --memory 1g \
+    --publish 127.0.0.1:18080:8080 \
+    --env KC_BOOTSTRAP_ADMIN_USERNAME="$ADMIN_USERNAME" \
+    --env KC_BOOTSTRAP_ADMIN_PASSWORD="$admin_password" \
+    --env KC_HOSTNAME=http://127.0.0.1:18080 \
+    --env MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
+    --env MACHINA_KEYCLOAK_REDIRECT_URI="$REDIRECT_URI" \
+    --volume "$PWD/$REALM_FILE:/opt/keycloak/data/import/machina-preview-realm.json:ro" \
+    "$image_ref" \
+    start-dev --import-realm >/dev/null
+}
+
 command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v docker >/dev/null 2>&1 || fail 'docker is required'
 command -v go >/dev/null 2>&1 || fail 'Go is required'
@@ -67,23 +86,7 @@ grep -Fq "@${expected_digest}" <<<"$repo_digests" || fail 'pulled Keycloak image
 version_output="$(docker run --rm "$image_ref" --version 2>&1)"
 grep -Fq '26.7.3' <<<"$version_output" || fail "locked image did not report Keycloak 26.7.3: $version_output"
 
-# start-dev is intentionally confined to this disposable CI integration
-# harness. Task 11 owns production-shaped preview deployment. This container is
-# explicitly removed by the trap instead of --rm so the same container can be
-# stopped and restarted for dependency-recovery evidence.
-docker run --detach \
-  --name "$CONTAINER" \
-  --memory 1g \
-  --publish 127.0.0.1:18080:8080 \
-  --env KC_BOOTSTRAP_ADMIN_USERNAME="$ADMIN_USERNAME" \
-  --env KC_BOOTSTRAP_ADMIN_PASSWORD="$admin_password" \
-  --env KC_HOSTNAME=http://127.0.0.1:18080 \
-  --env MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
-  --env MACHINA_KEYCLOAK_REDIRECT_URI="$REDIRECT_URI" \
-  --volume "$PWD/$REALM_FILE:/opt/keycloak/data/import/machina-preview-realm.json:ro" \
-  "$image_ref" \
-  start-dev --import-realm >/dev/null
-
+create_keycloak_container
 wait_for_keycloak_ready 'startup'
 container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"
 [[ -n "$container_id" ]] || fail 'Keycloak container identity is empty'
@@ -136,6 +139,8 @@ MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
 MACHINA_KEYCLOAK_MIGRATOR_DATABASE_URL="$POSTGRES_MIGRATOR_DATABASE_URL" \
   go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL|ExpiredIDTokenIntegration)$' -v ./internal/platform/identity
 
+# Prove provider outage and recovery by stopping then starting the exact same
+# container identity.
 docker stop --timeout 15 "$CONTAINER" >/dev/null
 if curl --fail --silent --show-error "$DISCOVERY_URL" >/dev/null 2>&1; then
   fail 'Keycloak OIDC discovery remained reachable after the provider container stopped'
@@ -156,4 +161,24 @@ MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
 MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
   go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$' -v ./internal/platform/identity
 
-printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session outage-restart boundary passed\n'
+# Destroy the provider runtime completely, then rebuild it from the same locked
+# image and repository-versioned realm template. A different container ID is
+# mandatory; otherwise this would merely repeat restart evidence.
+docker rm -f "$CONTAINER" >/dev/null
+if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+  fail 'Keycloak provider container still exists after destroy boundary'
+fi
+create_keycloak_container
+recreated_container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"
+[[ -n "$recreated_container_id" ]] || fail 'recreated Keycloak container identity is empty'
+[[ "$recreated_container_id" != "$container_id" ]] || fail 'Keycloak destroy/recreate reused the original container identity'
+wait_for_keycloak_ready 'recreate'
+
+MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
+MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
+MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
+MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
+  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$' -v ./internal/platform/identity
+
+printf 'keycloaktest: provider recreated from versioned realm template\n'
+printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session outage-restart-recreate boundary passed\n'

@@ -46,6 +46,12 @@ jobs:
         working-directory: job
         run: go test -count=1 ./scripts/keycloaktest
 
-      - name: Verify locked Keycloak provider integration
+      - name: Verify locked Keycloak provider integration from clean environment
         working-directory: job
-        run: bash scripts/keycloaktest/run.sh
+        run: |
+          env -i \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            GOTOOLCHAIN=local \
+            GITHUB_RUN_ID="$GITHUB_RUN_ID" \
+            bash scripts/keycloaktest/run.sh
