@@ -24,7 +24,7 @@ command -v docker >/dev/null 2>&1 || fail 'docker is required'
 
 migrations=(db/migrations/[0-9][0-9][0-9][0-9]_*.sql)
 [[ ${#migrations[@]} -gt 0 && -f "${migrations[0]}" ]] || fail 'database migrations are missing'
-[[ "${migrations[-1]}" == 'db/migrations/0018_invitation_acceptance.sql' ]] || fail "latest migration is not 0018_invitation_acceptance.sql: ${migrations[-1]}"
+[[ "${migrations[-1]}" == 'db/migrations/0019_invitation_privilege_hardening.sql' ]] || fail "latest migration is not 0019_invitation_privilege_hardening.sql: ${migrations[-1]}"
 
 docker pull "$POSTGRES_IMAGE" >/dev/null
 docker run --detach --rm \
