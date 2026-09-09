@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bytes"
 	"errors"
 	"reflect"
 	"testing"
@@ -92,6 +93,34 @@ func TestParamsRejectsMetadataDecisionMismatch(t *testing.T) {
 	event := decisionTestEvent("deny", metadata)
 	if _, err := Params(event); !errors.Is(err, ErrInvalidEvent) {
 		t.Fatalf("Params() error = %v, want ErrInvalidEvent", err)
+	}
+}
+
+func TestEventDoesNotExposeCallerOwnedChainLinkage(t *testing.T) {
+	if field, ok := reflect.TypeOf(Event{}).FieldByName("PreviousHash"); ok {
+		t.Fatalf("Event still exposes caller-owned chain linkage: %#v", field)
+	}
+}
+
+func TestParamsProducesStableContentHashWithoutAuthoritativePreviousHash(t *testing.T) {
+	metadata, err := NewAuthorizationDecisionMetadata("allow", 25*time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("NewAuthorizationDecisionMetadata() error = %v", err)
+	}
+	event := decisionTestEvent("allow", metadata)
+	first, err := Params(event)
+	if err != nil {
+		t.Fatalf("Params(first) error = %v", err)
+	}
+	second, err := Params(event)
+	if err != nil {
+		t.Fatalf("Params(second) error = %v", err)
+	}
+	if len(first.PreviousHash) != 0 || len(second.PreviousHash) != 0 {
+		t.Fatalf("Params() emitted caller-owned previous hash: first=%x second=%x", first.PreviousHash, second.PreviousHash)
+	}
+	if len(first.EventHash) != 32 || !bytes.Equal(first.EventHash, second.EventHash) {
+		t.Fatalf("Params() content hash is not stable SHA-256: first=%x second=%x", first.EventHash, second.EventHash)
 	}
 }
 
