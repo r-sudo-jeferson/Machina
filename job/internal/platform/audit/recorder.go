@@ -145,6 +145,10 @@ func ReconstructDecision(stored StoredDecision) (DecisionEvidence, error) {
 	if err != nil {
 		return DecisionEvidence{}, ErrInvalidDecisionEvidence
 	}
+	if (stored.Decision == "allow" && payload.reasonCodesPresent) ||
+		(stored.Decision == "deny" && !payload.reasonCodesPresent) {
+		return DecisionEvidence{}, ErrInvalidDecisionEvidence
+	}
 	const maxLatencyMilliseconds = int64((1<<63 - 1) / int64(time.Millisecond))
 	if payload.LatencyMS < 0 || payload.LatencyMS > maxLatencyMilliseconds ||
 		!validAuthorizationMetadataDecision(stored.Decision, payload.ReasonCodes) {
@@ -174,6 +178,7 @@ func decodeAuthorizationDecisionMetadata(raw []byte) (authorizationDecisionMetad
 		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
 	}
 	seen := make(map[string]struct{}, 2)
+	var payload authorizationDecisionMetadataPayload
 	for keyDecoder.More() {
 		keyToken, err := keyDecoder.Token()
 		if err != nil {
@@ -191,8 +196,12 @@ func decodeAuthorizationDecisionMetadata(raw []byte) (authorizationDecisionMetad
 		if err := keyDecoder.Decode(&value); err != nil {
 			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
 		}
-		if key == "latency_ms" && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		trimmedValue := bytes.TrimSpace(value)
+		if bytes.Equal(trimmedValue, []byte("null")) {
 			return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
+		}
+		if key == "reason_codes" {
+			payload.reasonCodesPresent = true
 		}
 	}
 	end, err := keyDecoder.Token()
@@ -209,7 +218,6 @@ func decodeAuthorizationDecisionMetadata(raw []byte) (authorizationDecisionMetad
 
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	var payload authorizationDecisionMetadataPayload
 	if err := decoder.Decode(&payload); err != nil {
 		return authorizationDecisionMetadataPayload{}, ErrInvalidDecisionEvidence
 	}
