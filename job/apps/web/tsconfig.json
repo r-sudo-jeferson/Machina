@@ -19,7 +19,6 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["vitest/globals", "node"],
-    "baseUrl": ".",
     "paths": {
       "@machina/alloy": ["../../packages/alloy/src/index.ts"]
     }
