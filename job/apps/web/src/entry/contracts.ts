@@ -43,3 +43,12 @@ export interface SessionContext {
 export interface EntryGateway {
   loadSession(signal?: AbortSignal): Promise<SessionContext>;
 }
+
+export interface TenantSwitchCommand {
+  tenantId: string;
+  idempotencyKey: string;
+}
+
+export interface EntryMutationGateway extends EntryGateway {
+  switchTenant(command: TenantSwitchCommand, signal?: AbortSignal): Promise<SessionContext>;
+}

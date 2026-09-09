@@ -1,15 +1,23 @@
 import type {
   AuthorizedContext,
   Capability,
-  EntryGateway,
+  EntryMutationGateway,
   Identity,
   SessionContext,
   Tenant,
+  TenantSwitchCommand,
   Workspace,
 } from './contracts';
 
 const SESSION_ENDPOINT = '/api/v1/session';
+const TENANT_SWITCH_ENDPOINT = '/api/v1/tenant-switch';
+const CSRF_COOKIE_NAME = '__Host-machina_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const OPENAPI_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i;
+
+export interface BrowserEntrySecurity {
+  readCSRFToken(): string | undefined;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -157,13 +165,55 @@ async function responseError(response: Response): Promise<EntryHttpError> {
   return new EntryHttpError(`Request failed (${response.status}).`, response.status);
 }
 
-export function createBrowserEntryGateway(fetcher: typeof fetch = globalThis.fetch): EntryGateway {
+function readBrowserCookie(name: string): string | undefined {
+  if (typeof document === 'undefined') {
+    return undefined;
+  }
+  for (const part of document.cookie.split(';')) {
+    const cookie = part.trim();
+    const separator = cookie.indexOf('=');
+    if (separator < 0 || cookie.slice(0, separator) !== name) {
+      continue;
+    }
+    const value = cookie.slice(separator + 1);
+    return value.length === 0 ? undefined : value;
+  }
+  return undefined;
+}
+
+const browserEntrySecurity: BrowserEntrySecurity = {
+  readCSRFToken: () => readBrowserCookie(CSRF_COOKIE_NAME),
+};
+
+export function createBrowserEntryGateway(
+  fetcher: typeof fetch = globalThis.fetch,
+  security: BrowserEntrySecurity = browserEntrySecurity,
+): EntryMutationGateway {
   return {
     async loadSession(signal?: AbortSignal): Promise<SessionContext> {
       const response = await fetcher(SESSION_ENDPOINT, {
         method: 'GET',
         credentials: 'same-origin',
         headers: {Accept: 'application/json'},
+        signal: signal ?? null,
+      });
+      if (!response.ok) {
+        throw await responseError(response);
+      }
+      return parseSessionContext(await response.json());
+    },
+
+    async switchTenant(command: TenantSwitchCommand, signal?: AbortSignal): Promise<SessionContext> {
+      const response = await fetcher(TENANT_SWITCH_ENDPOINT, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': command.idempotencyKey,
+          [CSRF_HEADER_NAME]: security.readCSRFToken() ?? '',
+        },
+        body: JSON.stringify({tenant_id: command.tenantId}),
         signal: signal ?? null,
       });
       if (!response.ok) {
