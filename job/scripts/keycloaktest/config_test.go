@@ -163,7 +163,7 @@ func TestKeycloakHarnessExercisesRealOutageAndSameContainerRestart(t *testing.T)
 		t.Fatal("Keycloak provider container uses --rm and cannot prove restart of the same container identity")
 	}
 	if !strings.Contains(script, `docker run --detach \
-  --name "$CONTAINER"`) {
+  --name "$CONTAINER"`) && !strings.Contains(script, `create_keycloak_container`) {
 		t.Fatal("Keycloak provider container is not explicitly retained for bounded restart evidence")
 	}
 	if strings.Contains(script, "GITHUB_TOKEN") || strings.Contains(script, "ghp_") || strings.Contains(script, "github_pat_") {
@@ -196,6 +196,56 @@ func TestKeycloakHarnessSeparatesRuntimeAndExpiryFixtureDatabaseRoles(t *testing
 	}
 }
 
+func TestKeycloakHarnessDestroysAndRecreatesProviderFromVersionedTemplate(t *testing.T) {
+	scriptPath := filepath.Join(jobRoot(t), "scripts", "keycloaktest", "run.sh")
+	raw, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read Keycloak integration harness: %v", err)
+	}
+	script := string(raw)
+
+	required := []string{
+		`create_keycloak_container`,
+		`docker rm -f "$CONTAINER"`,
+		`recreated_container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"`,
+		`[[ "$recreated_container_id" != "$container_id" ]]`,
+		`wait_for_keycloak_ready 'recreate'`,
+		`$PWD/$REALM_FILE:/opt/keycloak/data/import/machina-preview-realm.json:ro`,
+		`keycloaktest: provider recreated from versioned realm template`,
+	}
+	for _, fragment := range required {
+		if !strings.Contains(script, fragment) {
+			t.Fatalf("Keycloak integration harness is missing destroy/recreate invariant %q", fragment)
+		}
+	}
+}
+
+func TestKeycloakWorkflowRunsIntegrationFromExplicitCleanEnvironment(t *testing.T) {
+	workflowPath := filepath.Join(repositoryRoot(t), ".github", "workflows", "verify-keycloak.yml")
+	raw, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read Keycloak workflow: %v", err)
+	}
+	workflow := string(raw)
+
+	required := []string{
+		`env -i`,
+		`PATH="$PATH"`,
+		`HOME="$HOME"`,
+		`GOTOOLCHAIN=local`,
+		`GITHUB_RUN_ID="$GITHUB_RUN_ID"`,
+		`bash scripts/keycloaktest/run.sh`,
+	}
+	for _, fragment := range required {
+		if !strings.Contains(workflow, fragment) {
+			t.Fatalf("Keycloak workflow is missing clean-environment invariant %q", fragment)
+		}
+	}
+	if strings.Contains(workflow, "secrets.") || strings.Contains(workflow, "MACHINA_KEYCLOAK_CLIENT_SECRET:") || strings.Contains(workflow, "MACHINA_KEYCLOAK_ADMIN_PASSWORD:") {
+		t.Fatal("Keycloak workflow depends on inherited repository secret material")
+	}
+}
+
 func jobRoot(t *testing.T) string {
 	t.Helper()
 	_, currentFile, _, ok := runtime.Caller(0)
@@ -203,4 +253,9 @@ func jobRoot(t *testing.T) string {
 		t.Fatal("resolve config test path")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+}
+
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	return filepath.Clean(filepath.Join(jobRoot(t), ".."))
 }
