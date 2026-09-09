@@ -1,6 +1,11 @@
 import {useEffect, useRef, useState} from 'react';
 import {AlloyChassis, AlloySurface, AlloyWell, Button, StatusLamp} from '@machina/alloy';
-import type {EntryGateway, EntryMutationGateway, SessionContext} from './entry/contracts';
+import type {
+  EntryGateway,
+  EntryMutationGateway,
+  SessionContext,
+  TenantSwitchCommand,
+} from './entry/contracts';
 
 interface LoadingState {
   kind: 'loading';
@@ -48,9 +53,13 @@ export function MachinaEntryApp({
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [tenantSwitch, setTenantSwitch] = useState<TenantSwitchState>({kind: 'idle'});
   const tenantSwitchController = useRef<AbortController | null>(null);
+  const tenantSwitchIntent = useRef<TenantSwitchCommand | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
+    tenantSwitchController.current?.abort();
+    tenantSwitchController.current = null;
+    tenantSwitchIntent.current = null;
     setState({kind: 'loading'});
     setSelectedTenantId('');
     setTenantSwitch({kind: 'idle'});
@@ -136,10 +145,15 @@ export function MachinaEntryApp({
     tenantSwitchController.current?.abort();
     const controller = new AbortController();
     tenantSwitchController.current = controller;
-    const command = {
-      tenantId: targetTenantId,
-      idempotencyKey: newIdempotencyKey(),
-    };
+
+    let command = tenantSwitchIntent.current;
+    if (command === null || command.tenantId !== targetTenantId) {
+      command = {
+        tenantId: targetTenantId,
+        idempotencyKey: newIdempotencyKey(),
+      };
+      tenantSwitchIntent.current = command;
+    }
 
     setTenantSwitch({kind: 'pending'});
     void switchTenant(command, controller.signal).then(
@@ -147,6 +161,7 @@ export function MachinaEntryApp({
         if (controller.signal.aborted) {
           return;
         }
+        tenantSwitchIntent.current = null;
         setState({kind: 'ready', session});
         setSelectedTenantId('');
         setTenantSwitch({kind: 'idle'});
@@ -206,6 +221,7 @@ export function MachinaEntryApp({
                   value={resolvedTenantId}
                   disabled={tenantSwitch.kind === 'pending'}
                   onChange={(event) => {
+                    tenantSwitchIntent.current = null;
                     setSelectedTenantId(event.currentTarget.value);
                     if (tenantSwitch.kind === 'error') {
                       setTenantSwitch({kind: 'idle'});
