@@ -22,8 +22,8 @@ import (
 
 const (
 	keycloakIntegrationPostLoginRedirect = "https://app.example.test/home"
-	keycloakIntegrationAdminUsernameEnv   = "MACHINA_KEYCLOAK_ADMIN_USERNAME"
-	keycloakIntegrationAdminPasswordEnv   = "MACHINA_KEYCLOAK_ADMIN_PASSWORD"
+	keycloakIntegrationAdminUsernameEnv  = "MACHINA_KEYCLOAK_ADMIN_USERNAME"
+	keycloakIntegrationAdminPasswordEnv  = "MACHINA_KEYCLOAK_ADMIN_PASSWORD"
 )
 
 type keycloakOIDCTestAttempt struct {
