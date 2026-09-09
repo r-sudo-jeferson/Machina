@@ -5,7 +5,7 @@ readonly INVITE_SUBJECT_C='10000000-0000-0000-0000-0000000000c3'
 readonly INVITE_SUBJECT_D='10000000-0000-0000-0000-0000000000d4'
 readonly INVITE_SUBJECT_E='10000000-0000-0000-0000-0000000000e5'
 readonly INVITE_SUBJECT_F='10000000-0000-0000-0000-0000000000f6'
-readonly SUSPENDED_TENANT='00000000-0000-0000-0000-0000000000c3'
+readonly SUSPENDED_TENANT='00000000-0000-0000-0000-0000000000c9'
 
 invitation_function="$(query_as postgres "SELECT to_regprocedure('iam.accept_invitation(bytea,uuid)') IS NOT NULL")"
 expect_equals 't' "$invitation_function" 'invitation acceptance function is missing'
