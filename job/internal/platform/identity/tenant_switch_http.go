@@ -28,10 +28,12 @@ type tenantSwitchExecutor interface {
 }
 
 type TenantSwitchHTTPHandler struct {
-	switcher     tenantSwitchExecutor
-	metrics      *observability.OperationMetrics
-	clock        func() time.Time
-	maxBodyBytes int64
+	switcher         tenantSwitchExecutor
+	metrics          *observability.OperationMetrics
+	tracing          *tenantSwitchTracing
+	clock            func() time.Time
+	newCorrelationID func() (pgtype.UUID, error)
+	maxBodyBytes     int64
 }
 
 func NewTenantSwitchHTTPHandler(switcher tenantSwitchExecutor) (*TenantSwitchHTTPHandler, error) {
@@ -46,19 +48,35 @@ func NewTenantSwitchHTTPHandler(switcher tenantSwitchExecutor) (*TenantSwitchHTT
 }
 
 func newTenantSwitchHTTPHandler(switcher tenantSwitchExecutor, metrics *observability.OperationMetrics, clock func() time.Time) (*TenantSwitchHTTPHandler, error) {
-	if switcher == nil || metrics == nil || clock == nil {
+	tracing, err := newTenantSwitchTracing(otel.Tracer(tenantSwitchTraceInstrumentationName))
+	if err != nil {
+		return nil, errors.Join(ErrInvalidTenantSwitchCoordinatorConfig, err)
+	}
+	return newTenantSwitchHTTPHandlerWithTracing(switcher, metrics, tracing, clock, newTenantSwitchUUID)
+}
+
+func newTenantSwitchHTTPHandlerWithTracing(
+	switcher tenantSwitchExecutor,
+	metrics *observability.OperationMetrics,
+	tracing *tenantSwitchTracing,
+	clock func() time.Time,
+	newCorrelationID func() (pgtype.UUID, error),
+) (*TenantSwitchHTTPHandler, error) {
+	if switcher == nil || metrics == nil || tracing == nil || clock == nil || newCorrelationID == nil {
 		return nil, ErrInvalidTenantSwitchCoordinatorConfig
 	}
 	return &TenantSwitchHTTPHandler{
-		switcher:     switcher,
-		metrics:      metrics,
-		clock:        clock,
-		maxBodyBytes: defaultTenantSwitchMax,
+		switcher:         switcher,
+		metrics:          metrics,
+		tracing:          tracing,
+		clock:            clock,
+		newCorrelationID: newCorrelationID,
+		maxBodyBytes:     defaultTenantSwitchMax,
 	}, nil
 }
 
 func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h == nil || h.switcher == nil || h.metrics == nil || h.clock == nil {
+	if h == nil || h.switcher == nil || h.metrics == nil || h.tracing == nil || h.clock == nil || h.newCorrelationID == nil {
 		writeTenantSwitchProblem(w, http.StatusServiceUnavailable, "tenant_switch_unavailable", pgtype.UUID{})
 		return
 	}
@@ -97,13 +115,19 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	correlationID, err := newTenantSwitchUUID()
+	correlationID, err := h.newCorrelationID()
 	if err != nil {
 		writeTenantSwitchProblem(w, http.StatusServiceUnavailable, "correlation_unavailable", pgtype.UUID{})
 		return
 	}
+	traceCtx, span := h.tracing.start(r.Context(), tenantSwitchSpanHTTP, correlationID)
+	traceOutcome := observability.OutcomeError
+	defer func() {
+		finishTenantSwitchSpan(span, traceOutcome)
+	}()
+
 	startedAt := h.clock()
-	result, err := h.switcher.Switch(r.Context(), TenantSwitchRequest{
+	result, err := h.switcher.Switch(traceCtx, TenantSwitchRequest{
 		PresentedSessionToken: presentedToken,
 		TargetTenantID:        targetTenant,
 		IdempotencyKey:        idempotencyValues[0],
@@ -111,21 +135,22 @@ func (h *TenantSwitchHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	})
 	if err != nil {
 		status, code := mapTenantSwitchHTTPError(err)
-		h.recordTenantSwitchMetric(r.Context(), tenantSwitchHTTPMetricOutcome(err, status), startedAt)
+		traceOutcome = tenantSwitchHTTPMetricOutcome(err, status)
+		h.recordTenantSwitchMetric(traceCtx, traceOutcome, startedAt)
 		writeTenantSwitchProblem(w, status, code, correlationID)
 		return
 	}
 	if err := validateTenantSwitchHTTPResult(result); err != nil {
-		h.recordTenantSwitchMetric(r.Context(), observability.OutcomeError, startedAt)
+		h.recordTenantSwitchMetric(traceCtx, traceOutcome, startedAt)
 		writeTenantSwitchProblem(w, http.StatusServiceUnavailable, "tenant_switch_result_invalid", correlationID)
 		return
 	}
 
-	outcome := observability.OutcomeSuccess
+	traceOutcome = observability.OutcomeSuccess
 	if result.Replay {
-		outcome = observability.OutcomeReplay
+		traceOutcome = observability.OutcomeReplay
 	}
-	h.recordTenantSwitchMetric(r.Context(), outcome, startedAt)
+	h.recordTenantSwitchMetric(traceCtx, traceOutcome, startedAt)
 
 	httpx.NoStore(w)
 	w.Header().Set("Content-Type", "application/json")
