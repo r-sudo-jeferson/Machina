@@ -1,0 +1,392 @@
+{
+  "alloy": {
+    "primitive": {
+      "color": {
+        "electricBlue": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              0.0784313725490196,
+              0.49019607843137253,
+              1.0
+            ],
+            "hex": "#147DFF"
+          }
+        },
+        "plasmaCyan": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              0.0,
+              0.8509803921568627,
+              1.0
+            ],
+            "hex": "#00D9FF"
+          }
+        },
+        "voltLime": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              0.6823529411764706,
+              1.0,
+              0.23921568627450981
+            ],
+            "hex": "#AEFF3D"
+          }
+        },
+        "fusionMagenta": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              1.0,
+              0.17647058823529413,
+              0.5529411764705883
+            ],
+            "hex": "#FF2D8D"
+          }
+        },
+        "ionAmber": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              1.0,
+              0.6980392156862745,
+              0.10196078431372549
+            ],
+            "hex": "#FFB21A"
+          }
+        },
+        "signalRed": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              1.0,
+              0.23137254901960785,
+              0.27058823529411763
+            ],
+            "hex": "#FF3B45"
+          }
+        },
+        "reactorGreen": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [
+              0.12549019607843137,
+              0.8901960784313725,
+              0.47843137254901963
+            ],
+            "hex": "#20E37A"
+          }
+        }
+      },
+      "spacing": {
+        "base": {
+          "$type": "dimension",
+          "$value": {
+            "value": 4,
+            "unit": "px"
+          }
+        },
+        "sm": {
+          "$type": "dimension",
+          "$value": {
+            "value": 8,
+            "unit": "px"
+          }
+        },
+        "md": {
+          "$type": "dimension",
+          "$value": {
+            "value": 12,
+            "unit": "px"
+          }
+        },
+        "lg": {
+          "$type": "dimension",
+          "$value": {
+            "value": 16,
+            "unit": "px"
+          }
+        },
+        "xl": {
+          "$type": "dimension",
+          "$value": {
+            "value": 24,
+            "unit": "px"
+          }
+        },
+        "xxl": {
+          "$type": "dimension",
+          "$value": {
+            "value": 32,
+            "unit": "px"
+          }
+        },
+        "xxxl": {
+          "$type": "dimension",
+          "$value": {
+            "value": 48,
+            "unit": "px"
+          }
+        }
+      },
+      "radius": {
+        "r8": {
+          "$type": "dimension",
+          "$value": {
+            "value": 8,
+            "unit": "px"
+          }
+        },
+        "r12": {
+          "$type": "dimension",
+          "$value": {
+            "value": 12,
+            "unit": "px"
+          }
+        },
+        "r18": {
+          "$type": "dimension",
+          "$value": {
+            "value": 18,
+            "unit": "px"
+          }
+        },
+        "r24": {
+          "$type": "dimension",
+          "$value": {
+            "value": 24,
+            "unit": "px"
+          }
+        },
+        "r32": {
+          "$type": "dimension",
+          "$value": {
+            "value": 32,
+            "unit": "px"
+          }
+        }
+      },
+      "bevel": {
+        "edge": {
+          "$type": "dimension",
+          "$value": {
+            "value": 1,
+            "unit": "px"
+          }
+        }
+      },
+      "shadow": {
+        "offset": {
+          "bevelNegative": {
+            "$type": "dimension",
+            "$value": {
+              "value": -1,
+              "unit": "px"
+            }
+          },
+          "bevelPositive": {
+            "$type": "dimension",
+            "$value": {
+              "value": 1,
+              "unit": "px"
+            }
+          },
+          "lowNegative": {
+            "$type": "dimension",
+            "$value": {
+              "value": -2,
+              "unit": "px"
+            }
+          },
+          "lowPositive": {
+            "$type": "dimension",
+            "$value": {
+              "value": 2,
+              "unit": "px"
+            }
+          },
+          "highNegative": {
+            "$type": "dimension",
+            "$value": {
+              "value": -4,
+              "unit": "px"
+            }
+          },
+          "highPositive": {
+            "$type": "dimension",
+            "$value": {
+              "value": 4,
+              "unit": "px"
+            }
+          },
+          "floatingPositive": {
+            "$type": "dimension",
+            "$value": {
+              "value": 8,
+              "unit": "px"
+            }
+          }
+        },
+        "blur": {
+          "bevel": {
+            "$type": "dimension",
+            "$value": {
+              "value": 1,
+              "unit": "px"
+            }
+          },
+          "low": {
+            "$type": "dimension",
+            "$value": {
+              "value": 4,
+              "unit": "px"
+            }
+          },
+          "high": {
+            "$type": "dimension",
+            "$value": {
+              "value": 8,
+              "unit": "px"
+            }
+          },
+          "floating": {
+            "$type": "dimension",
+            "$value": {
+              "value": 16,
+              "unit": "px"
+            }
+          }
+        },
+        "spread": {
+          "zero": {
+            "$type": "dimension",
+            "$value": {
+              "value": 0,
+              "unit": "px"
+            }
+          }
+        }
+      },
+      "duration": {
+        "microFast": {
+          "$type": "duration",
+          "$value": {
+            "value": 80,
+            "unit": "ms"
+          }
+        },
+        "micro": {
+          "$type": "duration",
+          "$value": {
+            "value": 120,
+            "unit": "ms"
+          }
+        },
+        "microSlow": {
+          "$type": "duration",
+          "$value": {
+            "value": 140,
+            "unit": "ms"
+          }
+        },
+        "surfaceFast": {
+          "$type": "duration",
+          "$value": {
+            "value": 160,
+            "unit": "ms"
+          }
+        },
+        "surface": {
+          "$type": "duration",
+          "$value": {
+            "value": 200,
+            "unit": "ms"
+          }
+        },
+        "surfaceSlow": {
+          "$type": "duration",
+          "$value": {
+            "value": 220,
+            "unit": "ms"
+          }
+        },
+        "dialogFast": {
+          "$type": "duration",
+          "$value": {
+            "value": 220,
+            "unit": "ms"
+          }
+        },
+        "dialog": {
+          "$type": "duration",
+          "$value": {
+            "value": 280,
+            "unit": "ms"
+          }
+        },
+        "dialogSlow": {
+          "$type": "duration",
+          "$value": {
+            "value": 320,
+            "unit": "ms"
+          }
+        },
+        "reduced": {
+          "$type": "duration",
+          "$value": {
+            "value": 0.01,
+            "unit": "ms"
+          }
+        }
+      },
+      "easing": {
+        "standard": {
+          "$type": "cubicBezier",
+          "$value": [
+            0.2,
+            0,
+            0,
+            1
+          ]
+        },
+        "enter": {
+          "$type": "cubicBezier",
+          "$value": [
+            0,
+            0,
+            0.2,
+            1
+          ]
+        },
+        "exit": {
+          "$type": "cubicBezier",
+          "$value": [
+            0.4,
+            0,
+            1,
+            1
+          ]
+        }
+      },
+      "opacity": {
+        "disabled": {
+          "$type": "number",
+          "$value": 0.56
+        },
+        "muted": {
+          "$type": "number",
+          "$value": 0.72
+        }
+      }
+    }
+  }
+}

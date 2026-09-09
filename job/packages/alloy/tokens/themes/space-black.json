@@ -1,0 +1,84 @@
+{
+  "alloy": {
+    "theme": {
+      "spaceBlack": {
+        "chassis": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.11372549019607843, 0.12156862745098039, 0.13333333333333333],
+            "hex": "#1D1F22"
+          }
+        },
+        "litPlane": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.20392156862745098, 0.21568627450980393, 0.23529411764705882],
+            "hex": "#34373C"
+          }
+        },
+        "shadowPlane": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.03529411764705882, 0.0392156862745098, 0.047058823529411764],
+            "hex": "#090A0C"
+          }
+        },
+        "concaveWell": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.0784313725490196, 0.08627450980392157, 0.09803921568627451],
+            "hex": "#141619"
+          }
+        },
+        "text": {
+          "primary": {
+            "$type": "color",
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.9607843137254902, 0.9686274509803922, 0.9803921568627451],
+              "hex": "#F5F7FA"
+            }
+          },
+          "secondary": {
+            "$type": "color",
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.6980392156862745, 0.7215686274509804, 0.7568627450980392],
+              "hex": "#B2B8C1"
+            }
+          },
+          "disabled": {
+            "$type": "color",
+            "$value": {
+              "colorSpace": "srgb",
+              "components": [0.4823529411764706, 0.5098039215686274, 0.5529411764705883],
+              "hex": "#7B828D"
+            }
+          }
+        },
+        "specularEdge": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [1, 1, 1],
+            "hex": "#FFFFFF",
+            "alpha": 0.16
+          }
+        },
+        "ambientShadow": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0, 0, 0],
+            "hex": "#000000",
+            "alpha": 0.72
+          }
+        }
+      }
+    }
+  }
+}
