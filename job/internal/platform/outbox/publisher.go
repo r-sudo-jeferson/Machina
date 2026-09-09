@@ -64,6 +64,8 @@ func Params(envelope Envelope) (sqlcgen.EnqueueOutboxEventParams, error) {
 		envelope.OccurredAt.IsZero() || envelope.Payload == nil {
 		return sqlcgen.EnqueueOutboxEventParams{}, ErrInvalidEnvelope
 	}
+	occurredAt := envelope.OccurredAt.UTC().Truncate(time.Microsecond)
+	envelope.OccurredAt = occurredAt
 	payload, err := json.Marshal(envelope)
 	if err != nil || !json.Valid(payload) {
 		return sqlcgen.EnqueueOutboxEventParams{}, ErrInvalidEnvelope
@@ -71,6 +73,6 @@ func Params(envelope Envelope) (sqlcgen.EnqueueOutboxEventParams, error) {
 	return sqlcgen.EnqueueOutboxEventParams{
 		TenantID: envelope.TenantID, EventID: envelope.EventID, EventType: envelope.EventType,
 		EventVersion: envelope.EventVersion, CorrelationID: envelope.CorrelationID,
-		Payload: payload, OccurredAt: pgtype.Timestamptz{Time: envelope.OccurredAt.UTC(), Valid: true},
+		Payload: payload, OccurredAt: pgtype.Timestamptz{Time: occurredAt, Valid: true},
 	}, nil
 }
