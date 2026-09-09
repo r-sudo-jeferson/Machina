@@ -97,6 +97,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 	if err != nil || !json.Valid(metadata) {
 		return sqlcgen.InsertAuditEventParams{}, ErrInvalidEvent
 	}
+	occurredAt := event.OccurredAt.UTC().Truncate(time.Microsecond)
 	hashInput := struct {
 		TenantID       string          `json:"tenant_id"`
 		ID             string          `json:"id"`
@@ -113,7 +114,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 		TenantID: uuidText(event.TenantID), ID: uuidText(event.ID), ActorSubjectID: uuidText(event.ActorSubjectID),
 		EventType: event.EventType, Action: event.Action, Decision: event.Decision, PolicyVersion: event.PolicyVersion,
 		CorrelationID: uuidText(event.CorrelationID), SafeMetadata: metadata,
-		PreviousHash: "", OccurredAt: event.OccurredAt.UTC().Format(time.RFC3339Nano),
+		PreviousHash: "", OccurredAt: occurredAt.Format(time.RFC3339Nano),
 	}
 	canonical, err := json.Marshal(hashInput)
 	if err != nil {
@@ -125,7 +126,7 @@ func Params(event Event) (sqlcgen.InsertAuditEventParams, error) {
 		EventType: event.EventType, Action: event.Action, Decision: event.Decision,
 		PolicyVersion: event.PolicyVersion, CorrelationID: event.CorrelationID, SafeMetadata: metadata,
 		PreviousHash: nil, EventHash: sum[:],
-		OccurredAt: pgtype.Timestamptz{Time: event.OccurredAt.UTC(), Valid: true},
+		OccurredAt: pgtype.Timestamptz{Time: occurredAt, Valid: true},
 	}, nil
 }
 
