@@ -8,6 +8,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Immutable signed attestations of audit-chain prefixes. Signature keys are external; only bounded key identifiers and signatures are stored.
+type AuditCheckpoint struct {
+	TenantID        pgtype.UUID
+	ID              pgtype.UUID
+	ChainSequence   int64
+	ChainHash       []byte
+	StatementDigest []byte
+	Algorithm       string
+	KeyID           string
+	Signature       []byte
+	SignedAt        pgtype.Timestamptz
+}
+
 type IamMembership struct {
 	TenantID    pgtype.UUID
 	SubjectID   pgtype.UUID
