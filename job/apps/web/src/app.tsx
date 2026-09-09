@@ -8,6 +8,8 @@ import type {
   TenantSwitchCommand,
 } from './entry/contracts';
 
+const THEME_STORAGE_KEY = 'machina.appearance.theme.v1';
+
 interface LoadingState {
   kind: 'loading';
 }
@@ -50,12 +52,29 @@ function isAlloyTheme(value: string): value is AlloyTheme {
   return value === 'silver' || value === 'space-black';
 }
 
+function readStoredTheme(): AlloyTheme {
+  try {
+    const storedTheme = globalThis.localStorage.getItem(THEME_STORAGE_KEY);
+    return storedTheme !== null && isAlloyTheme(storedTheme) ? storedTheme : 'silver';
+  } catch {
+    return 'silver';
+  }
+}
+
+function persistTheme(theme: AlloyTheme): void {
+  try {
+    globalThis.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Local appearance persistence is optional; the in-memory selection remains usable.
+  }
+}
+
 export function MachinaEntryApp({
   gateway,
   newIdempotencyKey = defaultIdempotencyKey,
 }: MachinaEntryAppProps) {
   const [state, setState] = useState<EntryState>({kind: 'loading'});
-  const [theme, setTheme] = useState<AlloyTheme>('silver');
+  const [theme, setTheme] = useState<AlloyTheme>(readStoredTheme);
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [tenantSwitch, setTenantSwitch] = useState<TenantSwitchState>({kind: 'idle'});
   const tenantSwitchController = useRef<AbortController | null>(null);
@@ -219,6 +238,7 @@ export function MachinaEntryApp({
                     const nextTheme = event.currentTarget.value;
                     if (isAlloyTheme(nextTheme)) {
                       setTheme(nextTheme);
+                      persistTheme(nextTheme);
                     }
                   }}
                 >
