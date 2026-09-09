@@ -1,5 +1,4 @@
 import {render, screen} from '@testing-library/react';
-import type {ComponentType} from 'react';
 import {describe, expect, it} from 'vitest';
 import {MachinaEntryApp} from './app';
 import type {EntryGateway, SessionContext} from './entry/contracts';
@@ -49,22 +48,21 @@ const readySession: SessionContext = {
   expires_at: '2026-09-10T12:00:00Z',
 };
 
+function pendingGateway(): EntryGateway {
+  return {
+    loadSession: async () => await new Promise<SessionContext>(() => {}),
+  };
+}
+
 function readyGateway(): EntryGateway {
   return {
     loadSession: async () => readySession,
-    switchTenant: async () => readySession,
-    createTenant: async () => {
-      throw new Error('not exercised');
-    },
-    acceptInvitation: async () => {
-      throw new Error('not exercised');
-    },
   };
 }
 
 describe('Machina entry journey', () => {
   it('announces secure workspace bootstrap before exposing tenant context', () => {
-    render(<MachinaEntryApp />);
+    render(<MachinaEntryApp gateway={pendingGateway()} />);
 
     const status = screen.getByRole('status');
     expect(status.getAttribute('aria-live')).toBe('polite');
@@ -72,8 +70,7 @@ describe('Machina entry journey', () => {
   });
 
   it('renders the server-authorized tenant and workspace context without hiding denied capabilities', async () => {
-    const AppWithGateway = MachinaEntryApp as ComponentType<{gateway: EntryGateway}>;
-    render(<AppWithGateway gateway={readyGateway()} />);
+    render(<MachinaEntryApp gateway={readyGateway()} />);
 
     expect(await screen.findByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
     expect(screen.getByText('Ada Lovelace')).toBeTruthy();

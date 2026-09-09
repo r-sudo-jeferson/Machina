@@ -18,7 +18,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals", "node"]
+    "types": ["vitest/globals", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@machina/alloy": ["../../packages/alloy/src/index.ts"]
+    }
   },
   "include": ["src", "vite.config.ts", "vitest.config.ts", "playwright.config.ts", "e2e"],
   "exclude": ["node_modules", "dist", "playwright-report", "test-results"]

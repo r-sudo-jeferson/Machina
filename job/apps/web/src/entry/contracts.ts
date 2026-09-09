@@ -40,28 +40,6 @@ export interface SessionContext {
   expires_at: string;
 }
 
-export interface CreateTenantInput {
-  tenant_name: string;
-  tenant_slug: string;
-  workspace_name: string;
-}
-
-export interface Membership {
-  tenant_id: string;
-  subject_id: string;
-  starter_role: 'owner' | 'member';
-  status: 'active' | 'revoked';
-}
-
-export interface TenantBootstrap {
-  tenant: Tenant;
-  workspace: Workspace;
-  membership: Membership;
-}
-
 export interface EntryGateway {
   loadSession(signal?: AbortSignal): Promise<SessionContext>;
-  switchTenant(tenantId: string, signal?: AbortSignal): Promise<SessionContext>;
-  createTenant(input: CreateTenantInput, signal?: AbortSignal): Promise<TenantBootstrap>;
-  acceptInvitation(token: string, signal?: AbortSignal): Promise<Membership>;
 }
