@@ -55,16 +55,46 @@ func TestDigestCheckpointStatementFailsClosed(t *testing.T) {
 		name   string
 		mutate func(CheckpointStatement) CheckpointStatement
 	}{
-		{name: "invalid tenant", mutate: func(v CheckpointStatement) CheckpointStatement { v.TenantID = pgtype.UUID{}; return v }},
-		{name: "invalid checkpoint id", mutate: func(v CheckpointStatement) CheckpointStatement { v.CheckpointID = pgtype.UUID{}; return v }},
-		{name: "zero sequence", mutate: func(v CheckpointStatement) CheckpointStatement { v.ChainSequence = 0; return v }},
-		{name: "negative sequence", mutate: func(v CheckpointStatement) CheckpointStatement { v.ChainSequence = -1; return v }},
-		{name: "zero chain hash", mutate: func(v CheckpointStatement) CheckpointStatement { v.ChainHash = [32]byte{}; return v }},
-		{name: "unknown algorithm", mutate: func(v CheckpointStatement) CheckpointStatement { v.Algorithm = CheckpointAlgorithm("rsa-sha256"); return v }},
-		{name: "empty key id", mutate: func(v CheckpointStatement) CheckpointStatement { v.KeyID = ""; return v }},
-		{name: "oversized key id", mutate: func(v CheckpointStatement) CheckpointStatement { v.KeyID = strings.Repeat("k", 201); return v }},
-		{name: "invalid utf8 key id", mutate: func(v CheckpointStatement) CheckpointStatement { v.KeyID = string([]byte{0xff, 0xfe}); return v }},
-		{name: "zero signed at", mutate: func(v CheckpointStatement) CheckpointStatement { v.SignedAt = time.Time{}; return v }},
+		{name: "invalid tenant", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.TenantID = pgtype.UUID{}
+			return v
+		}},
+		{name: "invalid checkpoint id", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.CheckpointID = pgtype.UUID{}
+			return v
+		}},
+		{name: "zero sequence", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.ChainSequence = 0
+			return v
+		}},
+		{name: "negative sequence", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.ChainSequence = -1
+			return v
+		}},
+		{name: "zero chain hash", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.ChainHash = [32]byte{}
+			return v
+		}},
+		{name: "unknown algorithm", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.Algorithm = CheckpointAlgorithm("rsa-sha256")
+			return v
+		}},
+		{name: "empty key id", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.KeyID = ""
+			return v
+		}},
+		{name: "oversized key id", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.KeyID = strings.Repeat("k", 201)
+			return v
+		}},
+		{name: "invalid utf8 key id", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.KeyID = string([]byte{0xff, 0xfe})
+			return v
+		}},
+		{name: "zero signed at", mutate: func(v CheckpointStatement) CheckpointStatement {
+			v.SignedAt = time.Time{}
+			return v
+		}},
 	}
 
 	for _, tc := range cases {
@@ -90,15 +120,43 @@ func TestVerifyCheckpointSignatureDetectsCommittedFieldTampering(t *testing.T) {
 		name   string
 		mutate func(StoredCheckpoint) StoredCheckpoint
 	}{
-		{name: "tenant", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.TenantID = auditTestUUID(0x31); return v }},
-		{name: "checkpoint id", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.ID = auditTestUUID(0x32); return v }},
-		{name: "sequence", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.ChainSequence++; return v }},
-		{name: "chain hash", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.ChainHash[0] ^= 0xff; return v }},
-		{name: "digest", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.StatementDigest[0] ^= 0xff; return v }},
-		{name: "algorithm", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.Algorithm = CheckpointAlgorithm("rsa-sha256"); return v }},
-		{name: "key id", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.KeyID = "other-key"; return v }},
-		{name: "signature", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.Signature = append([]byte(nil), v.Signature...); v.Signature[len(v.Signature)-1] ^= 0xff; return v }},
-		{name: "signed at", mutate: func(v StoredCheckpoint) StoredCheckpoint { v.SignedAt = v.SignedAt.Add(time.Nanosecond); return v }},
+		{name: "tenant", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.TenantID = auditTestUUID(0x31)
+			return v
+		}},
+		{name: "checkpoint id", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.ID = auditTestUUID(0x32)
+			return v
+		}},
+		{name: "sequence", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.ChainSequence++
+			return v
+		}},
+		{name: "chain hash", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.ChainHash[0] ^= 0xff
+			return v
+		}},
+		{name: "digest", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.StatementDigest[0] ^= 0xff
+			return v
+		}},
+		{name: "algorithm", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.Algorithm = CheckpointAlgorithm("rsa-sha256")
+			return v
+		}},
+		{name: "key id", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.KeyID = "other-key"
+			return v
+		}},
+		{name: "signature", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.Signature = append([]byte(nil), v.Signature...)
+			v.Signature[len(v.Signature)-1] ^= 0xff
+			return v
+		}},
+		{name: "signed at", mutate: func(v StoredCheckpoint) StoredCheckpoint {
+			v.SignedAt = v.SignedAt.Add(time.Nanosecond)
+			return v
+		}},
 	}
 
 	for _, tc := range mutations {
@@ -135,13 +193,13 @@ func validCheckpointStatement() CheckpointStatement {
 		chainHash[i] = byte(i + 1)
 	}
 	return CheckpointStatement{
-		TenantID:       auditTestUUID(0x11),
-		CheckpointID:   auditTestUUID(0x22),
-		ChainSequence:  7,
-		ChainHash:      chainHash,
-		Algorithm:      CheckpointAlgorithmECDSAP256SHA256,
-		KeyID:          "kms/test-key/v1",
-		SignedAt:       time.Date(2026, 9, 9, 11, 40, 0, 123456789, time.UTC),
+		TenantID:      auditTestUUID(0x11),
+		CheckpointID:  auditTestUUID(0x22),
+		ChainSequence: 7,
+		ChainHash:     chainHash,
+		Algorithm:     CheckpointAlgorithmECDSAP256SHA256,
+		KeyID:         "kms/test-key/v1",
+		SignedAt:      time.Date(2026, 9, 9, 11, 40, 0, 123456789, time.UTC),
 	}
 }
 
