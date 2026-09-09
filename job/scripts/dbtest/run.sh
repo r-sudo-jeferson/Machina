@@ -35,6 +35,8 @@ readonly MIGRATIONS=(
   db/migrations/0015_tenant_switch_idempotency_scope.sql
   db/migrations/0016_tenant_switch_response_etag.sql
   db/migrations/0017_audit_integrity_checkpoints.sql
+  db/migrations/0018_invitation_acceptance.sql
+  db/migrations/0019_invitation_privilege_hardening.sql
 )
 
 fail() {
@@ -281,5 +283,6 @@ source scripts/dbtest/check_tenant_switch_idempotency_scope.sh
 run_go_tenant_switch_integration
 run_go_audit_integration
 source scripts/dbtest/check_idempotency_boundary.sh
+source scripts/dbtest/check_invitation_acceptance.sh
 
 printf 'dbtest: PostgreSQL %s tenancy/RLS kernel passed\n' "$actual_version"
