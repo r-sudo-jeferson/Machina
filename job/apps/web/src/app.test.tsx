@@ -173,7 +173,7 @@ describe('Machina entry journey', () => {
     );
     await user.click(screen.getByRole('button', {name: 'Switch context'}));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Temporary switch failure.');
+    expect((await screen.findByRole('alert')).textContent).toContain('Temporary switch failure.');
     expect(screen.getByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
 
     await user.click(screen.getByRole('button', {name: 'Switch context'}));
