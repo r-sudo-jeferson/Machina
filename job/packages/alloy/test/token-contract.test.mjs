@@ -10,7 +10,33 @@ async function readJson(relativePath) {
   return JSON.parse(await readFile(path.join(alloyRoot, relativePath), 'utf8'));
 }
 
-test('canonical Alloy token files and palettes are exact', async () => {
+function assertDtcgSrgbColor(token, expectedHex, expectedAlpha = 1) {
+  assert.equal(token.$type, 'color');
+  assert.equal(typeof token.$value, 'object');
+  assert.notEqual(token.$value, null);
+  assert.equal(token.$value.colorSpace, 'srgb');
+  assert.equal(token.$value.hex, expectedHex);
+  assert.equal(token.$value.alpha ?? 1, expectedAlpha);
+  assert.ok(Array.isArray(token.$value.components));
+  assert.equal(token.$value.components.length, 3);
+
+  const expectedComponents = [
+    Number.parseInt(expectedHex.slice(1, 3), 16) / 255,
+    Number.parseInt(expectedHex.slice(3, 5), 16) / 255,
+    Number.parseInt(expectedHex.slice(5, 7), 16) / 255,
+  ];
+
+  for (const [index, expected] of expectedComponents.entries()) {
+    const actual = token.$value.components[index];
+    assert.equal(typeof actual, 'number');
+    assert.ok(
+      Math.abs(actual - expected) <= 1e-12,
+      `${expectedHex} component ${index} must encode the canonical sRGB value`,
+    );
+  }
+}
+
+test('canonical Alloy token files and palettes are exact DTCG 2025.10 values', async () => {
   const required = [
     'tokens/primitives.json',
     'tokens/themes/silver.json',
@@ -23,34 +49,34 @@ test('canonical Alloy token files and palettes are exact', async () => {
     required.map(readJson),
   );
 
-  assert.equal(silver.alloy.theme.silver.chassis.$value, '#D8DADD');
-  assert.equal(silver.alloy.theme.silver.litPlane.$value, '#F5F6F7');
-  assert.equal(silver.alloy.theme.silver.shadowPlane.$value, '#B4B8BE');
-  assert.equal(silver.alloy.theme.silver.concaveWell.$value, '#C9CCD1');
-  assert.equal(silver.alloy.theme.silver.text.primary.$value, '#17191D');
-  assert.equal(silver.alloy.theme.silver.text.secondary.$value, '#4D535B');
-  assert.equal(silver.alloy.theme.silver.text.disabled.$value, '#737A84');
-  assert.equal(silver.alloy.theme.silver.specularEdge.$value, 'rgba(255,255,255,0.82)');
-  assert.equal(silver.alloy.theme.silver.ambientShadow.$value, 'rgba(67,72,80,0.28)');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.chassis, '#D8DADD');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.litPlane, '#F5F6F7');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.shadowPlane, '#B4B8BE');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.concaveWell, '#C9CCD1');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.text.primary, '#17191D');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.text.secondary, '#4D535B');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.text.disabled, '#737A84');
+  assertDtcgSrgbColor(silver.alloy.theme.silver.specularEdge, '#FFFFFF', 0.82);
+  assertDtcgSrgbColor(silver.alloy.theme.silver.ambientShadow, '#434850', 0.28);
 
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.chassis.$value, '#1D1F22');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.litPlane.$value, '#34373C');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.shadowPlane.$value, '#090A0C');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.concaveWell.$value, '#141619');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.text.primary.$value, '#F5F7FA');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.text.secondary.$value, '#B2B8C1');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.text.disabled.$value, '#7B828D');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.specularEdge.$value, 'rgba(255,255,255,0.16)');
-  assert.equal(spaceBlack.alloy.theme.spaceBlack.ambientShadow.$value, 'rgba(0,0,0,0.72)');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.chassis, '#1D1F22');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.litPlane, '#34373C');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.shadowPlane, '#090A0C');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.concaveWell, '#141619');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.text.primary, '#F5F7FA');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.text.secondary, '#B2B8C1');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.text.disabled, '#7B828D');
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.specularEdge, '#FFFFFF', 0.16);
+  assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.ambientShadow, '#000000', 0.72);
 
   const detail = primitives.alloy.primitive.color;
-  assert.equal(detail.electricBlue.$value, '#147DFF');
-  assert.equal(detail.plasmaCyan.$value, '#00D9FF');
-  assert.equal(detail.voltLime.$value, '#AEFF3D');
-  assert.equal(detail.fusionMagenta.$value, '#FF2D8D');
-  assert.equal(detail.ionAmber.$value, '#FFB21A');
-  assert.equal(detail.signalRed.$value, '#FF3B45');
-  assert.equal(detail.reactorGreen.$value, '#20E37A');
+  assertDtcgSrgbColor(detail.electricBlue, '#147DFF');
+  assertDtcgSrgbColor(detail.plasmaCyan, '#00D9FF');
+  assertDtcgSrgbColor(detail.voltLime, '#AEFF3D');
+  assertDtcgSrgbColor(detail.fusionMagenta, '#FF2D8D');
+  assertDtcgSrgbColor(detail.ionAmber, '#FFB21A');
+  assertDtcgSrgbColor(detail.signalRed, '#FF3B45');
+  assertDtcgSrgbColor(detail.reactorGreen, '#20E37A');
 
   assert.deepEqual(primitives.alloy.primitive.spacing.base.$value, { value: 4, unit: 'px' });
   assert.deepEqual(

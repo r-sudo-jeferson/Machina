@@ -10,6 +10,8 @@
 
 **Spec:** `job/docs/superpowers/specs/2026-09-09-mch-s001-alloy-foundation-design.md`
 
+**Normative correction (2026-09-09):** DTCG 2025.10 `color` values are structured objects, not CSS color strings. MCH-S001 source colors use the bounded sRGB representation `{ "colorSpace": "srgb", "components": [...], "alpha": <optional>, "hex": "#RRGGBB" }`; `alpha` defaults to `1`, and `hex` is retained as the six-digit fallback/canonical-literal check. The compiler must validate that the structured value and fallback agree before emitting CSS. The previously written `cache: false` example for `actions/setup-node` is also superseded: omit the `cache` input until a real supported package-manager cache is configured. These corrections change no palette, Slice scope, architecture, accessibility requirement, dependency pin, or GAUNTLET criterion.
+
 ## Global Constraints
 
 - Active Slice only: `MCH-S001@1.0.0`; GAUNTLET `GNT-MCH-S001-001`.
@@ -75,26 +77,18 @@ const required = [
 ];
 ```
 
-Assert exact theme literals:
+Assert exact canonical colors through their DTCG 2025.10 structured sRGB values. The test must verify `$type: "color"`, `colorSpace: "srgb"`, three normalized components matching the canonical six-digit hex literal, optional `alpha` where transparency is canonical, and the exact six-digit `hex` fallback. Example assertions:
 
 ```js
-assert.equal(silver.alloy.theme.silver.chassis.$value, '#D8DADD');
-assert.equal(silver.alloy.theme.silver.litPlane.$value, '#F5F6F7');
-assert.equal(silver.alloy.theme.silver.shadowPlane.$value, '#B4B8BE');
-assert.equal(silver.alloy.theme.silver.concaveWell.$value, '#C9CCD1');
-assert.equal(silver.alloy.theme.silver.text.primary.$value, '#17191D');
-assert.equal(silver.alloy.theme.silver.text.secondary.$value, '#4D535B');
-assert.equal(silver.alloy.theme.silver.text.disabled.$value, '#737A84');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.chassis.$value, '#1D1F22');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.litPlane.$value, '#34373C');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.shadowPlane.$value, '#090A0C');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.concaveWell.$value, '#141619');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.text.primary.$value, '#F5F7FA');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.text.secondary.$value, '#B2B8C1');
-assert.equal(spaceBlack.alloy.theme.spaceBlack.text.disabled.$value, '#7B828D');
+assertDtcgSrgbColor(silver.alloy.theme.silver.chassis, '#D8DADD');
+assertDtcgSrgbColor(silver.alloy.theme.silver.specularEdge, '#FFFFFF', 0.82);
+assertDtcgSrgbColor(silver.alloy.theme.silver.ambientShadow, '#434850', 0.28);
+assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.chassis, '#1D1F22');
+assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.specularEdge, '#FFFFFF', 0.16);
+assertDtcgSrgbColor(spaceBlack.alloy.theme.spaceBlack.ambientShadow, '#000000', 0.72);
 ```
 
-Also assert the seven detail colors, spacing base 4 px, radius set `8/12/18/24/32`, focus width 2 px, minimum target 24 px, preferred target 44 px, and semantic material names.
+Also assert all remaining Silver/Space Black text/material colors, the seven detail colors, spacing base 4 px, radius set `8/12/18/24/32`, focus width 2 px, minimum target 24 px, preferred target 44 px, and semantic material names. String-valued `$value` is invalid for a MCH-S001 source color token.
 
 - [ ] **Step 2: Create the Alloy workflow**
 
@@ -126,10 +120,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.20.0'
-          cache: false
       - working-directory: job
         run: node --test packages/alloy/test/*.test.mjs
 ```
+
+Do not pass `cache: false`; `actions/setup-node` treats `cache` as a package-manager selector rather than a boolean. Introduce caching only when pnpm is actually configured and the cache input can name the supported package manager deterministically.
 
 - [ ] **Step 3: Run RED**
 
@@ -152,7 +147,7 @@ Commit message: `test(alloy): require canonical token foundation`.
 
 - [ ] **Step 1: Implement primitive/detail/geometry tokens**
 
-Use DTCG form, for example:
+Use DTCG 2025.10 form. Dimensions remain `{ "value": number, "unit": "px" }`. Source colors use structured sRGB values; the six-digit hex field is a validated fallback, not the typed value itself. For example:
 
 ```json
 {
@@ -163,19 +158,33 @@ Use DTCG form, for example:
         "2": {"$type": "dimension", "$value": {"value": 8, "unit": "px"}}
       },
       "color": {
-        "electricBlue": {"$type": "color", "$value": "#147DFF"},
-        "plasmaCyan": {"$type": "color", "$value": "#00D9FF"}
+        "electricBlue": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0.0784313725490196, 0.49019607843137253, 1],
+            "hex": "#147DFF"
+          }
+        },
+        "plasmaCyan": {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [0, 0.8509803921568627, 1],
+            "hex": "#00D9FF"
+          }
+        }
       }
     }
   }
 }
 ```
 
-Encode all required spacing/radius/detail/motion values explicitly. No aliases in primitive files.
+Encode all required spacing/radius/detail/motion values explicitly. No aliases in primitive files. Transparent theme source colors use the same sRGB object plus numeric `alpha`; do not encode `rgba(...)` strings.
 
 - [ ] **Step 2: Implement exact theme palettes**
 
-Use the exact values from the spec. Theme files contain only material/text/specular/ambient source values for their own theme.
+Use the exact values from the spec. Theme files contain only material/text/specular/ambient source values for their own theme. Preserve canonical six-digit source literals in `hex` and encode canonical transparency in `alpha`.
 
 - [ ] **Step 3: Implement semantic/material/accessibility aliases**
 
@@ -223,7 +232,7 @@ Generate twice into two fresh `mkdtemp` directories and assert byte equality. Ad
 
 - [ ] **Step 2: Add contrast tests before compiler implementation**
 
-Implement test-local sRGB relative-luminance calculation and assert canonical intended text/background pairs meet at least 4.5:1 for normal body text. Do not lower thresholds to make palette pass; if an intended pair fails, map that semantic use to a safer canonical plane instead of changing canonical raw colors.
+Implement test-local sRGB relative-luminance calculation and assert canonical intended text/background pairs meet at least 4.5:1 for normal body text. Derive luminance from the validated structured sRGB components, not by assuming `$value` is a hex string. Do not lower thresholds to make palette pass; if an intended pair fails, map that semantic use to a safer canonical plane instead of changing canonical raw colors.
 
 - [ ] **Step 3: Run RED**
 
@@ -238,11 +247,12 @@ Expected: fail because compiler/generated contracts do not exist.
 3. Accept only objects with `$type/$value` leaves or nested groups used by this spec.
 4. Resolve `{path.to.token}` references recursively with visiting/resolved sets; unknown or cyclic references throw with the path.
 5. Sort emitted custom-property names lexicographically.
-6. Format dimensions as `<value><unit>` and preserve approved color/RGBA strings verbatim.
-7. Emit theme selectors and semantic/material variables without copying theme literals into component mappings.
-8. Emit forced-colors rules that remove decorative shadows/background images and expose system-color border/outline/focus semantics.
-9. Emit reduced-motion rules that set nonessential durations to `0.01ms`, iteration count to `1`, and remove nonessential transforms/scroll animation.
-10. Write trailing-newline UTF-8 output only.
+6. Format dimensions as `<value><unit>`. For MCH-S001 source colors, require a DTCG structured sRGB object with three normalized numeric components, optional `alpha` in `[0,1]`, and six-digit `hex` fallback; reject CSS-string `$value`, verify `hex` agrees with the components within the exact 8-bit channel mapping used by the canonical palette, then serialize CSS deterministically as the canonical hex when alpha is `1` or `rgb(r g b / alpha)` when alpha is translucent.
+7. Validate any `shadow` composite against DTCG 2025.10 (`color`, `offsetX`, `offsetY`, `blur`, `spread`, optional `inset`) and serialize it only after references are resolved.
+8. Emit theme selectors and semantic/material variables without copying theme literals into component mappings.
+9. Emit forced-colors rules that remove decorative shadows/background images and expose system-color border/outline/focus semantics.
+10. Emit reduced-motion rules that set nonessential durations to `0.01ms`, iteration count to `1`, and remove nonessential transforms/scroll animation.
+11. Write trailing-newline UTF-8 output only.
 
 CLI behavior:
 
@@ -421,7 +431,7 @@ Commit message: `test(alloy): cover state and accessibility matrix`.
 
 ## Self-review result
 
-- Canonical Silver/Space Black values: covered by Tasks 8.1/8.2.
+- Canonical Silver/Space Black values: covered by Tasks 8.1/8.2 using DTCG 2025.10 structured sRGB source colors.
 - Deterministic DTCG → CSS/TypeScript generation: covered by Task 8.3.
 - Contrast pairs: covered before decorative components in Task 8.3.
 - Forced colors and reduced motion: generated/tested before React components in Task 8.3.
