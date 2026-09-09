@@ -24,6 +24,26 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+wait_for_keycloak_ready() {
+  local phase="$1"
+  local ready=0
+  for _ in $(seq 1 120); do
+    if curl --fail --silent --show-error "$DISCOVERY_URL" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    if ! docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -qx true; then
+      docker logs "$CONTAINER" >&2 || true
+      fail "Keycloak exited before OIDC discovery became ready during ${phase}"
+    fi
+    sleep 1
+  done
+  if [[ "$ready" != '1' ]]; then
+    docker logs "$CONTAINER" >&2 || true
+    fail "Keycloak OIDC discovery did not become ready within the bounded ${phase} window"
+  fi
+}
+
 command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v docker >/dev/null 2>&1 || fail 'docker is required'
 command -v go >/dev/null 2>&1 || fail 'Go is required'
@@ -49,8 +69,10 @@ version_output="$(docker run --rm "$image_ref" --version 2>&1)"
 grep -Fq '26.7.3' <<<"$version_output" || fail "locked image did not report Keycloak 26.7.3: $version_output"
 
 # start-dev is intentionally confined to this disposable CI integration
-# harness. Task 11 owns production-shaped preview deployment.
-docker run --detach --rm \
+# harness. Task 11 owns production-shaped preview deployment. This container is
+# explicitly removed by the trap instead of --rm so the same container can be
+# stopped and restarted for dependency-recovery evidence.
+docker run --detach \
   --name "$CONTAINER" \
   --memory 1g \
   --publish 127.0.0.1:18080:8080 \
@@ -63,22 +85,9 @@ docker run --detach --rm \
   "$image_ref" \
   start-dev --import-realm >/dev/null
 
-ready=0
-for _ in $(seq 1 120); do
-  if curl --fail --silent --show-error "$DISCOVERY_URL" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  if ! docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -qx true; then
-    docker logs "$CONTAINER" >&2 || true
-    fail 'Keycloak exited before OIDC discovery became ready'
-  fi
-  sleep 1
-done
-if [[ "$ready" != '1' ]]; then
-  docker logs "$CONTAINER" >&2 || true
-  fail 'Keycloak OIDC discovery did not become ready within the bounded startup window'
-fi
+wait_for_keycloak_ready 'startup'
+container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"
+[[ -n "$container_id" ]] || fail 'Keycloak container identity is empty'
 
 # Concurrent application sessions are proven against the same PostgreSQL 18.6
 # identity/session kernel used by the database harness, exposed only on loopback.
@@ -126,12 +135,30 @@ MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
 MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
   go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL)$' -v ./internal/platform/identity
 
-# TDD RED: this assertion is intentionally executed while Keycloak is still
-# healthy. The next implementation step must create a real dependency outage;
-# changing the assertion to pass would violate the contract.
+# Stop the exact provider container and prove discovery fails closed rather than
+# silently accepting a stale or synthetic provider boundary.
+docker stop --timeout 15 "$CONTAINER" >/dev/null
+if curl --fail --silent --show-error "$DISCOVERY_URL" >/dev/null 2>&1; then
+  fail 'Keycloak OIDC discovery remained reachable after the provider container stopped'
+fi
 MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
 MACHINA_EXPECT_KEYCLOAK_UNAVAILABLE=1 \
 MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
   go test -race -count=1 -run '^TestKeycloakOIDCProviderUnavailableIntegration$' -v ./internal/platform/identity
 
-printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session boundary passed\n'
+# Restart the same container identity; recreating a new container would not
+# prove dependency restart recovery for the already-selected provider instance.
+docker start "$CONTAINER" >/dev/null
+restarted_container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"
+[[ "$restarted_container_id" == "$container_id" ]] || fail 'Keycloak restart changed container identity'
+wait_for_keycloak_ready 'restart'
+
+# Re-run real discovery and Authorization Code + PKCE against the restarted
+# provider. These tests create fresh ephemeral user/login material.
+MACHINA_RUN_KEYCLOAK_INTEGRATION=1 \
+MACHINA_KEYCLOAK_CLIENT_SECRET="$client_secret" \
+MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
+MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
+  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$' -v ./internal/platform/identity
+
+printf 'keycloaktest: locked Keycloak 26.7.3 OIDC authorization-code/session outage-restart boundary passed\n'

@@ -134,6 +134,43 @@ func TestKeycloakOCIImageIsVersionAndDigestLocked(t *testing.T) {
 	}
 }
 
+func TestKeycloakHarnessExercisesRealOutageAndSameContainerRestart(t *testing.T) {
+	scriptPath := filepath.Join(jobRoot(t), "scripts", "keycloaktest", "run.sh")
+	raw, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read Keycloak integration harness: %v", err)
+	}
+	script := string(raw)
+
+	required := []string{
+		`docker stop --timeout 15 "$CONTAINER"`,
+		`docker start "$CONTAINER"`,
+		`MACHINA_EXPECT_KEYCLOAK_UNAVAILABLE=1`,
+		`container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"`,
+		`restarted_container_id="$(docker inspect "$CONTAINER" --format '{{.Id}}')"`,
+		`[[ "$restarted_container_id" == "$container_id" ]]`,
+		`wait_for_keycloak_ready 'restart'`,
+		`^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration)$`,
+	}
+	for _, fragment := range required {
+		if !strings.Contains(script, fragment) {
+			t.Fatalf("Keycloak integration harness is missing reliability invariant %q", fragment)
+		}
+	}
+
+	if strings.Contains(script, `docker run --detach --rm \
+  --name "$CONTAINER"`) {
+		t.Fatal("Keycloak provider container uses --rm and cannot prove restart of the same container identity")
+	}
+	if !strings.Contains(script, `docker run --detach \
+  --name "$CONTAINER"`) {
+		t.Fatal("Keycloak provider container is not explicitly retained for bounded restart evidence")
+	}
+	if strings.Contains(script, "GITHUB_TOKEN") || strings.Contains(script, "ghp_") || strings.Contains(script, "github_pat_") {
+		t.Fatal("Keycloak integration harness contains repository credential material")
+	}
+}
+
 func jobRoot(t *testing.T) string {
 	t.Helper()
 	_, currentFile, _, ok := runtime.Caller(0)
