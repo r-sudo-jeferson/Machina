@@ -15,6 +15,7 @@ const ALLOWED_TYPES = new Set([
   'color',
   'dimension',
   'duration',
+  'fontFamily',
   'number',
   'cubicBezier',
   'shadow',
@@ -167,6 +168,16 @@ function validateCubicBezier(value, tokenPath) {
   }
 }
 
+function validateFontFamily(value, tokenPath) {
+  const families = Array.isArray(value) ? value : [value];
+  if (
+    families.length === 0
+    || families.some((family) => typeof family !== 'string' || family.trim().length === 0)
+  ) {
+    throw new Error(`Token ${tokenPath} must resolve to a non-empty DTCG font family list`);
+  }
+}
+
 function validateShadowLayer(layer, tokenPath) {
   if (!isPlainObject(layer)) {
     throw new Error(`Token ${tokenPath} shadow layer must be an object`);
@@ -204,6 +215,9 @@ function validateResolvedToken(token) {
       break;
     case 'duration':
       validateDuration(value, tokenPath);
+      break;
+    case 'fontFamily':
+      validateFontFamily(value, tokenPath);
       break;
     case 'number':
       if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -343,6 +357,32 @@ function shadowToCss(value) {
   }).join(', ');
 }
 
+const GENERIC_FONT_FAMILIES = new Set([
+  'cursive',
+  'emoji',
+  'fangsong',
+  'fantasy',
+  'math',
+  'monospace',
+  'sans-serif',
+  'serif',
+  'system-ui',
+  'ui-monospace',
+  'ui-rounded',
+  'ui-sans-serif',
+  'ui-serif',
+]);
+
+function fontFamilyToCss(value) {
+  const families = Array.isArray(value) ? value : [value];
+  return families.map((family) => {
+    if (GENERIC_FONT_FAMILIES.has(family)) {
+      return family;
+    }
+    return `"${family.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+  }).join(', ');
+}
+
 function tokenToCss(token) {
   switch (token.type) {
     case 'color':
@@ -351,6 +391,8 @@ function tokenToCss(token) {
       return dimensionToCss(token.value);
     case 'duration':
       return durationToCss(token.value);
+    case 'fontFamily':
+      return fontFamilyToCss(token.value);
     case 'number':
       return formatNumber(token.value);
     case 'cubicBezier':
@@ -387,6 +429,7 @@ function makeCommonDeclarations(resolved) {
     ['--alloy-focus-contrast', 'alloy.accessibility.focus.contrast'],
     ['--alloy-focus-offset', 'alloy.accessibility.focus.offset'],
     ['--alloy-focus-width', 'alloy.accessibility.focus.width'],
+    ['--alloy-font-interface', 'alloy.primitive.typography.interface'],
     ['--alloy-contrast-normal-text', 'alloy.accessibility.contrast.normalText'],
     ['--alloy-contrast-large-text', 'alloy.accessibility.contrast.largeText'],
     ['--alloy-contrast-non-text', 'alloy.accessibility.contrast.nonText'],

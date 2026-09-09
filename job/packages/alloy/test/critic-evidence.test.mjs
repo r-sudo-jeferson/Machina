@@ -46,6 +46,16 @@ test('visual critic plan covers the complete first-tranche state and accessibili
       plan.captures.some((capture) => capture.theme === theme && capture.mode === 'forced-colors'),
       `forced-colors evidence must cover ${theme}`,
     );
+    const materialStates = new Set(
+      plan.captures
+        .filter((capture) => capture.theme === theme && capture.component === 'material')
+        .flatMap((capture) => capture.materialStates ?? []),
+    );
+    assert.deepEqual(
+      [...materialStates].sort(),
+      ['beveled', 'concave-deep', 'concave-low', 'convex-high', 'convex-low', 'floating', 'flush', 'inlaid'],
+      `material evidence must cover every state in ${theme}`,
+    );
   }
 
   const files = plan.captures.map(({file}) => file);

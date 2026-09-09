@@ -1,3 +1,4 @@
+@import "@fontsource-variable/inter/wght.css";
 @import "../generated/tokens.css";
 
 .alloy-chassis,
@@ -13,6 +14,7 @@
 .alloy-chassis {
   background: var(--alloy-chassis);
   color: var(--alloy-text-primary);
+  font-family: var(--alloy-font-interface);
 }
 
 .alloy-surface {
@@ -245,7 +247,7 @@
   .alloy-switch__thumb,
   .alloy-status-lamp__indicator {
     background: Canvas;
-    border-color: CanvasText;
+    border: 1px solid CanvasText;
     box-shadow: none;
     color: CanvasText;
     forced-color-adjust: auto;

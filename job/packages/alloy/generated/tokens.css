@@ -12,6 +12,7 @@
   --alloy-focus-contrast: 3;
   --alloy-focus-offset: 2px;
   --alloy-focus-width: 2px;
+  --alloy-font-interface: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
   --alloy-motion-dialog-fast: 220ms;
   --alloy-motion-dialog-slow: 320ms;
   --alloy-motion-dialog-standard: 280ms;

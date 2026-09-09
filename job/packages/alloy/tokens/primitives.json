@@ -87,6 +87,18 @@
           }
         }
       },
+      "typography": {
+        "interface": {
+          "$type": "fontFamily",
+          "$value": [
+            "Inter Variable",
+            "Inter",
+            "ui-sans-serif",
+            "system-ui",
+            "sans-serif"
+          ]
+        }
+      },
       "spacing": {
         "base": {
           "$type": "dimension",

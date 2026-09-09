@@ -1,5 +1,6 @@
 import type {CSSProperties} from 'react';
 import type {Meta, StoryObj} from '@storybook/react-vite';
+import {alloyMaterialStates, type AlloyMaterialState} from '../generated/tokens';
 import {AlloyChassis, AlloySurface, AlloyWell, type AlloyChassisProps} from './material';
 
 const meta = {
@@ -23,21 +24,33 @@ const chassisStyle: CSSProperties = {
 const depthStyle: CSSProperties = {
   display: 'grid',
   gap: '16px',
-  padding: '24px',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
 };
+
+const stateStyle: CSSProperties = {
+  display: 'grid',
+  gap: '8px',
+  minBlockSize: '112px',
+  padding: '20px',
+};
+
+function MaterialSample({state}: {state: AlloyMaterialState}) {
+  const Component = state.startsWith('concave') ? AlloyWell : AlloySurface;
+  return (
+    <Component material={state} style={stateStyle}>
+      <strong>{state}</strong>
+      <span>Alloy material state</span>
+    </Component>
+  );
+}
 
 function DepthMatrix({theme}: {theme: Theme}) {
   return (
     <AlloyChassis theme={theme} style={chassisStyle}>
-      <AlloySurface material="convex-low" style={depthStyle}>
-        <strong>{theme === 'silver' ? 'Silver' : 'Space Black'} material depth</strong>
-        <AlloyWell material="concave-low" style={depthStyle}>
-          <span>Concave workspace well</span>
-          <AlloySurface material="inlaid" style={depthStyle}>
-            <span>Inlaid control plane — third and final local depth level</span>
-          </AlloySurface>
-        </AlloyWell>
-      </AlloySurface>
+      <h1>{theme === 'silver' ? 'Silver' : 'Space Black'} material states</h1>
+      <div style={depthStyle}>
+        {alloyMaterialStates.map((state) => <MaterialSample key={state} state={state} />)}
+      </div>
     </AlloyChassis>
   );
 }
