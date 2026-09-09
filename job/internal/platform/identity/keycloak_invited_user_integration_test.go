@@ -111,6 +111,9 @@ func TestKeycloakOIDCInvitedUserAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("begin invitation fixture transaction: %v", err)
 	}
 	defer func() { _ = fixtureTx.Rollback(context.Background()) }()
+	if _, err := fixtureTx.Exec(ctx, `SELECT set_config('app.tenant_id', $1::uuid::text, true)`, tenantID); err != nil {
+		t.Fatalf("establish tenant-local context for invitation fixture: %v", err)
+	}
 	if _, err := fixtureTx.Exec(ctx, `
 		INSERT INTO iam.subjects (id, external_subject, display_name)
 		VALUES ($1, $2, 'Machina CI Inviter')
@@ -220,11 +223,20 @@ func TestKeycloakOIDCInvitedUserAgainstPostgreSQL(t *testing.T) {
 		t.Fatalf("invitation replay changed membership result: first=%#v replay=%#v", accepted, replayed)
 	}
 
+	inspectionTx, err := migratorPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin invitation inspection transaction: %v", err)
+	}
+	defer func() { _ = inspectionTx.Rollback(context.Background()) }()
+	if _, err := inspectionTx.Exec(ctx, `SELECT set_config('app.tenant_id', $1::uuid::text, true)`, tenantID); err != nil {
+		t.Fatalf("establish tenant-local context for invitation inspection: %v", err)
+	}
+
 	var storedInvitationStatus, storedInvitationRole string
 	var storedInvitedSubjectID pgtype.UUID
 	var storedTokenHash []byte
 	var acceptedAtPresent bool
-	if err := migratorPool.QueryRow(ctx, `
+	if err := inspectionTx.QueryRow(ctx, `
 		SELECT status, invited_subject_id, starter_role, token_hash, accepted_at IS NOT NULL
 		FROM iam.invitations
 		WHERE tenant_id = $1 AND id = $2
@@ -246,7 +258,7 @@ func TestKeycloakOIDCInvitedUserAgainstPostgreSQL(t *testing.T) {
 
 	var membershipCount int
 	var membershipRole, membershipStatus string
-	if err := migratorPool.QueryRow(ctx, `
+	if err := inspectionTx.QueryRow(ctx, `
 		SELECT count(*), min(starter_role), min(status)
 		FROM iam.memberships
 		WHERE tenant_id = $1 AND subject_id = $2
@@ -255,5 +267,8 @@ func TestKeycloakOIDCInvitedUserAgainstPostgreSQL(t *testing.T) {
 	}
 	if membershipCount != 1 || membershipRole != "member" || membershipStatus != "active" {
 		t.Fatalf("invited-user membership = count:%d role:%q status:%q, want 1/member/active", membershipCount, membershipRole, membershipStatus)
+	}
+	if err := inspectionTx.Commit(ctx); err != nil {
+		t.Fatalf("commit invitation inspection transaction: %v", err)
 	}
 }
