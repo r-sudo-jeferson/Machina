@@ -53,7 +53,8 @@ describe('Alloy automated accessibility gate', () => {
       const {container} = render(<AccessibilityMatrix theme={theme} />);
       const results = await axe.run(container);
       const blocking = results.violations.filter(
-        (violation) => violation.impact !== null && blockingImpacts.has(violation.impact),
+        (violation) =>
+          typeof violation.impact === 'string' && blockingImpacts.has(violation.impact),
       );
 
       expect(
