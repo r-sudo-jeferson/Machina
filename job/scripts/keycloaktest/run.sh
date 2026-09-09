@@ -134,7 +134,7 @@ MACHINA_KEYCLOAK_ADMIN_USERNAME="$ADMIN_USERNAME" \
 MACHINA_KEYCLOAK_ADMIN_PASSWORD="$admin_password" \
 MACHINA_KEYCLOAK_DATABASE_URL="$POSTGRES_DATABASE_URL" \
 MACHINA_KEYCLOAK_MIGRATOR_DATABASE_URL="$POSTGRES_MIGRATOR_DATABASE_URL" \
-  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL)$' -v ./internal/platform/identity
+  go test -race -count=1 -run '^TestKeycloakOIDC(ProviderIntegration|AuthorizationCodePKCEIntegration|ConcurrentSessionsAgainstPostgreSQL|ExpiredApplicationSessionAgainstPostgreSQL|ExpiredIDTokenIntegration)$' -v ./internal/platform/identity
 
 docker stop --timeout 15 "$CONTAINER" >/dev/null
 if curl --fail --silent --show-error "$DISCOVERY_URL" >/dev/null 2>&1; then
