@@ -163,7 +163,7 @@ export function createBrowserEntryGateway(fetcher: typeof fetch = globalThis.fet
         method: 'GET',
         credentials: 'same-origin',
         headers: {Accept: 'application/json'},
-        signal,
+        signal: signal ?? null,
       });
       if (!response.ok) {
         throw await responseError(response);
