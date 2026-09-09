@@ -144,6 +144,8 @@ INSERT INTO authz.policy_snapshots (
   ('${TENANT_B}', 1, repeat('b', 64), '{}'::jsonb, 'permit(principal, action, resource);', 'active', '${SUBJECT_B}', clock_timestamp());
 SQL
 
+source scripts/dbtest/check_audit_integrity.sh
+
 missing_context_count="$(query_as "$RUNTIME_ROLE" 'SELECT count(*) FROM iam.workspaces')"
 expect_equals '0' "$missing_context_count" 'runtime without tenant context observed tenant rows'
 expect_failure "$RUNTIME_ROLE" "INSERT INTO iam.workspaces (tenant_id,id,slug,display_name) VALUES ('${TENANT_A}','20000000-0000-0000-0000-0000000000ff','blocked','Blocked')" 'runtime without tenant context mutated tenant data'
