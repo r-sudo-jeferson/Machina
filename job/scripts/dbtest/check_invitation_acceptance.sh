@@ -13,9 +13,9 @@ expect_equals 't' "$invitation_function" 'invitation acceptance function is miss
 runtime_execute="$(query_as postgres "SELECT has_function_privilege('${RUNTIME_ROLE}','iam.accept_invitation(bytea,uuid)','EXECUTE')")"
 expect_equals 't' "$runtime_execute" 'runtime role cannot execute invitation acceptance boundary'
 
-# Runtime retains ordinary tenant-scoped invitation access only; without a
-# transaction-local tenant it must not discover invitations by table scan.
-expect_equals '0' "$(query_as "$RUNTIME_ROLE" 'SELECT count(*) FROM iam.invitations')" 'runtime without tenant context observed invitation rows'
+runtime_table_privileges="$(query_as postgres "SELECT has_table_privilege('${RUNTIME_ROLE}','iam.invitations','SELECT')::int || ':' || has_table_privilege('${RUNTIME_ROLE}','iam.invitations','INSERT')::int || ':' || has_table_privilege('${RUNTIME_ROLE}','iam.invitations','UPDATE')::int || ':' || has_table_privilege('${RUNTIME_ROLE}','iam.invitations','DELETE')::int || ':' || has_table_privilege('${RUNTIME_ROLE}','iam.invitations','TRUNCATE')::int || ':' || has_table_privilege('${RUNTIME_ROLE}','iam.invitations','REFERENCES')::int || ':' || has_table_privilege('${RUNTIME_ROLE}','iam.invitations','TRIGGER')::int")"
+expect_equals '0:0:0:0:0:0:0' "$runtime_table_privileges" 'runtime role retains direct iam.invitations table privileges'
+expect_failure "$RUNTIME_ROLE" 'SELECT count(*) FROM iam.invitations' 'runtime role bypassed invitation acceptance function with direct table read'
 
 docker exec -i "$CONTAINER" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$DB_NAME" <<SQL
 INSERT INTO iam.subjects (id, external_subject, display_name) VALUES
