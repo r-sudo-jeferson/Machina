@@ -46,6 +46,6 @@ jobs:
         working-directory: job
         run: go test -count=1 ./scripts/keycloaktest
 
-      - name: Verify real Keycloak OIDC provider boundary
+      - name: Verify locked Keycloak provider integration
         working-directory: job
-        run: MACHINA_RUN_KEYCLOAK_INTEGRATION=1 go test -count=1 -run '^TestKeycloakOIDCProviderIntegration$' -v ./internal/platform/identity
+        run: bash scripts/keycloaktest/run.sh
