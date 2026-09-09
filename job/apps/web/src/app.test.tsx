@@ -138,4 +138,57 @@ describe('Machina entry journey', () => {
     expect(screen.getByText('Policy v8')).toBeTruthy();
     expect(screen.queryByRole('heading', {name: 'Acme / Core'})).toBeNull();
   });
+
+  it('reuses the same idempotency key when retrying the same failed tenant switch intent', async () => {
+    const commands: TenantSwitchCommand[] = [];
+    let attempts = 0;
+    let keySequence = 0;
+    const gateway: EntryMutationGateway = {
+      loadSession: async () => readySession,
+      switchTenant: async (command) => {
+        commands.push(command);
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('Temporary switch failure.');
+        }
+        return switchedSession;
+      },
+    };
+    const user = userEvent.setup();
+
+    render(
+      <MachinaEntryApp
+        gateway={gateway}
+        newIdempotencyKey={() => {
+          keySequence += 1;
+          return `tenant-switch-ui-recovery-000${keySequence}`;
+        }}
+      />,
+    );
+
+    expect(await screen.findByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
+    await user.selectOptions(
+      screen.getByRole('combobox', {name: 'Tenant context'}),
+      '00000000-0000-4000-8000-000000000011',
+    );
+    await user.click(screen.getByRole('button', {name: 'Switch context'}));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Temporary switch failure.');
+    expect(screen.getByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
+
+    await user.click(screen.getByRole('button', {name: 'Switch context'}));
+
+    expect(await screen.findByRole('heading', {name: 'Forge Labs / Foundry'})).toBeTruthy();
+    expect(commands).toEqual([
+      {
+        tenantId: '00000000-0000-4000-8000-000000000011',
+        idempotencyKey: 'tenant-switch-ui-recovery-0001',
+      },
+      {
+        tenantId: '00000000-0000-4000-8000-000000000011',
+        idempotencyKey: 'tenant-switch-ui-recovery-0001',
+      },
+    ]);
+    expect(keySequence).toBe(1);
+  });
 });
