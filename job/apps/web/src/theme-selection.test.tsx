@@ -1,8 +1,10 @@
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {describe, expect, it} from 'vitest';
+import {beforeEach, describe, expect, it} from 'vitest';
 import {MachinaEntryApp} from './app';
 import type {EntryGateway, SessionContext} from './entry/contracts';
+
+const THEME_STORAGE_KEY = 'machina.appearance.theme.v1';
 
 const session: SessionContext = {
   identity: {
@@ -45,6 +47,10 @@ const gateway: EntryGateway = {
 };
 
 describe('Machina appearance selection', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it('switches the Alloy chassis between the two canonical themes through an accessible control', async () => {
     const user = userEvent.setup();
     const {container} = render(<MachinaEntryApp gateway={gateway} />);
@@ -59,5 +65,21 @@ describe('Machina appearance selection', () => {
 
     await user.selectOptions(appearance, 'silver');
     expect(chassis?.getAttribute('data-alloy-theme')).toBe('silver');
+  });
+
+  it('restores the last valid theme across application remounts without a server preference contract', async () => {
+    const user = userEvent.setup();
+    const first = render(<MachinaEntryApp gateway={gateway} />);
+
+    expect(await screen.findByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
+    await user.selectOptions(screen.getByRole('combobox', {name: 'Appearance'}), 'space-black');
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('space-black');
+    first.unmount();
+
+    const second = render(<MachinaEntryApp gateway={gateway} />);
+    expect(await screen.findByRole('heading', {name: 'Acme / Core'})).toBeTruthy();
+    expect(second.container.querySelector('.entry-chassis')?.getAttribute('data-alloy-theme')).toBe(
+      'space-black',
+    );
   });
 });
