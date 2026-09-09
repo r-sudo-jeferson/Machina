@@ -72,8 +72,7 @@ func TestInvitationStoreAcceptRejectsInvalidInputBeforeDatabase(t *testing.T) {
 
 	for _, tt := range tests {
 		t := tt
-		testName := tt.name
-		t.Run(testName, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			queries := &recordingInvitationQueries{}
 			store := NewInvitationStore(queries)
