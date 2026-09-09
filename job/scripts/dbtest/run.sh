@@ -214,7 +214,7 @@ SQL
 
   local ready=0
   for _ in $(seq 1 100); do
-    if docker exec "$CONTAINER" bash -c 'exec 3<>/dev/tcp/127.0.0.1/50051' >/dev/null 2>&1; then
+    if docker exec "$CONTAINER" bash -c 'exec 3<>/dev/tcp/127.0.0.1:50051' >/dev/null 2>&1; then
       ready=1
       break
     fi
@@ -263,7 +263,7 @@ run_go_audit_integration() {
   docker exec "$CONTAINER" env \
     MACHINA_AUDIT_DATABASE_URL="postgresql://${RUNTIME_ROLE}@127.0.0.1:5432/${DB_NAME}?sslmode=disable&connect_timeout=2" \
     /tmp/machina-audit.test \
-    -test.run '^(TestDecisionEvidenceRoundTripPostgreSQL|TestPostgresCheckpointStoreRoundTripAndConflictWinner)$' \
+    -test.run '^(TestDecisionEvidenceRoundTripPostgreSQL|TestPostgresCheckpointStoreRoundTripAndConflictWinner|TestPostgresAuditChainCheckpointerAndTamperEvidence)$' \
     -test.v
   rm -rf -- "$AUDIT_INTEGRATION_DIR"
   AUDIT_INTEGRATION_DIR=''
